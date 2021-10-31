@@ -1,0 +1,2 @@
+type = "PraseStdinError"
+source = "invalid digit found in string"

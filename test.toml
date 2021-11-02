@@ -1,2 +1,3 @@
-type = "PraseStdinError"
+[error]
 source = "invalid digit found in string"
+type = "PraseStdin"

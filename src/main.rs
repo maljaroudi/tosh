@@ -1,15 +1,17 @@
 mod error;
+use std::io::BufRead;
+
 use error::*;
 use snafu::ResultExt;
 type Result<T, E = Errors> = std::result::Result<T, E>;
 fn main() -> Result<()> {
-    println!("Hello, world!");
-    // take a line from stdin
-    let mut line = String::new();
-    std::io::stdin().read_line(&mut line).unwrap();
-    // parse the line
-    let line: i32 = line.trim().parse().context(PraseStdin)?;
+    Ok(())
+}
 
+fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
+    let mut line = String::new();
+    input.read_line(&mut line).unwrap();
+    let line: i32 = line.trim().parse().context(PraseStdin)?;
     Ok(())
 }
 
@@ -20,7 +22,8 @@ mod tests {
     use super::*;
     #[test]
     fn test_parse_error() {
-        let result = main();
+        let stdin = b"Test";
+        let result = sheller(&mut stdin.as_ref());
         assert!(result.is_err());
         let err = result.unwrap_err();
         assert_eq!(
@@ -29,9 +32,10 @@ mod tests {
         );
     }
     #[test]
-    // test the serialize
+    // test the serialize to a test.toml file
     fn test_serialize() {
-        let result = main();
+        let stdin = b"Test123";
+        let result = sheller(&mut stdin.as_ref());
         assert!(result.is_err());
         let err = result.unwrap_err();
         let serialized = toml::to_string(&err).unwrap();

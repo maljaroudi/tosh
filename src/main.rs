@@ -48,8 +48,10 @@ fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
             "cd" => {
                 let new_dir = args.peekable().peek().map_or("~/", |x| *x);
                 let root = Path::new(new_dir);
-                if let Err(e) = env::set_current_dir(&root) {
-                    eprintln!("{}", e);
+                if let Err(result) = env::set_current_dir(&root).context(CdError) {
+                    let t = toml::to_string(&result).unwrap();
+
+                    eprintln!("{}", t);
                 }
             }
             "exit" => return Ok(()),
@@ -86,6 +88,16 @@ fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
                 } else if let Err(e) = fs::create_dir(dir) {
                     eprintln!("{}", e);
                 }
+            }
+            "clear" => {
+                //unimplemented!() // clear terminal
+                //clear the terminal
+                let mut stdout = stdout.lock();
+                stdout.write_all(b"\x1b[2J").unwrap();
+            }
+            _ => {
+                // throw error
+                Command::new(command);
             }
             command => {
                 let child = Command::new(command).args(args).spawn();

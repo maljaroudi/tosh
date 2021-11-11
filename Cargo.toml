@@ -9,3 +9,8 @@ edition = "2021"
 serde = { version = "1.0.130", features = ["derive"] }
 snafu = "0.6.10"
 toml = "0.5.8"
+
+[profile.release]
+opt-level = "z"
+lto = true
+debug = false

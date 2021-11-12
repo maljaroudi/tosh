@@ -15,6 +15,9 @@ fn main() -> Result<()> {
     // lock stdin
     let mut t = stdin.lock();
     // call sheller with stdin
+    print!("\x1b[2J");
+    // use \e[3J
+    print!("\x1b[3J");
     sheller(&mut t)?;
     Ok(())
 }
@@ -23,9 +26,13 @@ fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
     //input.read_line(&mut line).unwrap();
     //let line: i32 = line.trim().parse().context(PraseStdin)?;
     // -----------------------------------------------------
+    stdout().write_all(b"\x1b[1;1H").unwrap();
     loop {
-        print!("{}> ", env::current_dir().unwrap().display());
-        stdout().flush();
+        // clear screen
+        //print!("\x1b[2J");
+
+        print!("\r{}>", env::current_dir().unwrap().display());
+        stdout().flush().unwrap();
         let mut line = String::new();
         input.read_line(&mut line).unwrap();
 
@@ -93,7 +100,14 @@ fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
                 //unimplemented!() // clear terminal
                 //clear the terminal
                 let mut stdout = stdout.lock();
-                stdout.write_all(b"\x1b[2J").unwrap();
+                //flush the buffer
+                stdout.flush().unwrap();
+                // use '\e[3J' to clear the screen
+                print!("\x1b[2J");
+                // use \e[3J
+                print!("\x1b[3J");
+                stdout.write_all(b"\x1b[1;1H").unwrap();
+                //lock the top of the screen
             }
             _ => {
                 // throw error

@@ -1,5 +1,9 @@
+// TODO: The entire program needs to be rewritten.
+// We should only take stdin but do everything on the cursor instead
+
 use nix::sys::wait::*;
 use nix::unistd::Pid;
+use std::io::BufRead;
 use std::io::Result;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -7,7 +11,6 @@ use std::io::Write;
 use std::io::{stdin, stdout, Cursor};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use termion::clear;
 use termion::cursor;
 use termion::cursor::DetectCursorPos;
 use termion::event::Key;
@@ -33,13 +36,12 @@ async fn main() -> Result<()> {
         match c.as_ref().expect("ERROR FETCHING") {
             Key::Ctrl('q') => {
                 //stdout.activate_raw_mode()?;
-                println!("QUITTING TOSH, LOVE YOU <3");
+                println!("\r\nQUITTING TOSH, LOVE YOU <3\r");
                 break;
             }
             Key::Char(k) => {
                 curse.seek(SeekFrom::Current(1))?;
                 if *k == '\n' {
-                    //
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
                     process_command(string, &mut stdout).await?;
@@ -58,42 +60,22 @@ async fn main() -> Result<()> {
             }
             Key::BackTab => tab_completion(),
             Key::Backspace => {
-                if curse.position() > 0 {
-                    //print!("\u{0008} \u{0008}");
-                    let pos = curse.position();
-                    curse.seek(SeekFrom::Current(-1))?;
-                    let c = cursor::Save;
-                    let poss = DetectCursorPos::cursor_pos(&mut stdout)?;
-                    if poss.0 == 1 && !curse.get_ref().is_empty() {
-                        print!("{}", cursor::Up(1));
-                        print!("{}", cursor::Right(pos as u16 + 1));
+                let current_letter = curse.position();
+                let cmd = curse.get_mut();
+                if !cmd.is_empty() {
+                    if current_letter as usize == cmd.len() {
+                        cmd.pop();
                     } else {
-                        print!("{}", cursor::Left(1));
+                        cmd.remove(current_letter as usize - 1);
                     }
-                    let cmd = curse.get_mut();
-                    cmd.remove((pos - 1) as usize);
+                    print!("\u{0008}");
+                    print!("{}", termion::cursor::Save);
 
-                    print!("{}", cursor::Save);
-                    //remove the current char
-                    print!("\u{0008} \u{0008}");
                     print!("{}", termion::clear::AfterCursor);
-
-                    if poss.0 < (2) as u16 {
-                        print!("\r> ");
-                        print!("{}", cmd);
-                        print!("{}", cursor::Restore);
-                    }
-                    //otherwise print the command with index between the cursor and the cursor
-                    else {
-                        print!(
-                            "\r{}",
-                            cmd[(pos - poss.0 as u64 + 1) as usize..].to_string()
-                        );
-                        print!("{}", cursor::Restore);
-                    }
-                    //print!("{}{}", poss.0, pos);
-
-                    //print!("{}", cursor::Goto(poss.0 - 1, poss.1));
+                    let rest = cmd[current_letter as usize - 1..].to_owned();
+                    print!("{}", rest);
+                    print!("{}", termion::cursor::Restore);
+                    curse.seek(SeekFrom::Current(-1))?;
                 }
             }
             Key::Ctrl('u') => {

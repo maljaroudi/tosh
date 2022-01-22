@@ -13,9 +13,8 @@ nix = "0.23.1"
 signal-hook = "0.3.13"
 termion = "1.5.6"
 tokio = { version = "1.15.0", features = ["full"] }
-unsegen = "0.3.0"
 
 [profile.release]
 opt-level = "z"
-lto = "thin"
-debug = 1
+lto = true
+debug = false

@@ -122,6 +122,20 @@ async fn process_command(
     }
     let cmd = args[0].to_owned();
     println!("\r");
+    match cmd.as_str() {
+        "cd" => {
+            out.suspend_raw_mode()?;
+            if arguments.clone().count() == 0 {
+                let home = std::env::var("HOME").unwrap_or("/".to_owned());
+                std::env::set_current_dir(home)?;
+            } else {
+                std::env::set_current_dir(args[1])?;
+            }
+            shell_return();
+            return Ok(());
+        }
+        _ => {}
+    };
     if args.len() == 1 {
         out.suspend_raw_mode()?;
         let mut output = Command::new(cmd);

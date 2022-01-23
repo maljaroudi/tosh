@@ -39,6 +39,36 @@ async fn main() -> Result<()> {
                 println!("\r\nQUITTING TOSH, LOVE YOU <3\r");
                 break;
             }
+            Key::Ctrl('w') => {
+                // ctrl+w will delete the last word. It's the same as backspace, but we use the last occuring space to remove the entire word.
+                // Note: If we only have one word, remove everything.
+                let current_letter = curse.position();
+                let cmd = curse.get_mut();
+                let mut last_space = 0;
+                if !cmd.is_empty() {
+                    if current_letter as usize == cmd.len() {
+                        last_space = cmd.rfind(' ').unwrap();
+                        cmd.truncate(last_space);
+                    } else {
+                        cmd.remove(current_letter as usize - 1);
+                    }
+                    for _ in 0..current_letter as usize - last_space {
+                        print!("\u{0008}");
+                    }
+                    print!("{}", termion::cursor::Save);
+
+                    print!("{}", termion::clear::AfterCursor);
+                    let rest = cmd[last_space..].to_owned();
+                    print!("{}", rest);
+                    print!("{}", termion::cursor::Restore);
+                    //println!("\n\rDEBUG: {cmd}, REST: {rest}");
+                    curse.seek(SeekFrom::Current(
+                        (-(current_letter as isize - last_space as isize))
+                            .try_into()
+                            .unwrap(),
+                    ))?;
+                }
+            }
             Key::Char(k) => {
                 curse.seek(SeekFrom::Current(1))?;
                 if *k == '\n' {

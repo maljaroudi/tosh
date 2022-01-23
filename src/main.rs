@@ -1,36 +1,47 @@
 // TODO: The entire program needs to be rewritten.
 // We should only take stdin but do everything on the cursor instead
-
+mod error;
+use crossterm::terminal;
+use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
-use std::io::BufRead;
-use std::io::Result;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::io::{stdin, stdout, Cursor};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-use termion::cursor;
-use termion::cursor::DetectCursorPos;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
 use tokio::process::Command;
+
+struct CleanUp;
+impl Drop for CleanUp {
+    fn drop(&mut self) {
+        terminal::disable_raw_mode().expect("Unable to disable raw mode")
+    }
+}
+
+type Result<T> = std::result::Result<T, error::Error>;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let term = Arc::new(AtomicBool::new(false));
-    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))?;
-    signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&term))?;
-    signal_hook::flag::register(signal_hook::consts::SIGTSTP, Arc::clone(&term))?;
+    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+        .map_err(Error::Signal)?;
+    signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&term))
+        .map_err(Error::Signal)?;
+    signal_hook::flag::register(signal_hook::consts::SIGTSTP, Arc::clone(&term))
+        .map_err(Error::Signal)?;
 
-    let mut stdout = stdout().into_raw_mode()?;
+    let mut stdout = stdout().into_raw_mode().map_err(Error::Term)?;
 
     let stdin = stdin();
     let mut curse: Cursor<String> = Cursor::new(String::new());
 
     shell_return();
-    stdout.flush()?;
+    stdout.flush().map_err(Error::Inout)?;
 
     for c in stdin.keys() {
         match c.as_ref().expect("ERROR FETCHING") {
@@ -66,15 +77,17 @@ async fn main() -> Result<()> {
                     print!("{}", rest);
                     print!("{}", termion::cursor::Restore);
                     //println!("\n\rDEBUG: {cmd}, REST: {rest}");
-                    curse.seek(SeekFrom::Current(
-                        (-(current_letter as isize - last_space as isize))
-                            .try_into()
-                            .unwrap(),
-                    ))?;
+                    curse
+                        .seek(SeekFrom::Current(
+                            (-(current_letter as isize - last_space as isize))
+                                .try_into()
+                                .unwrap(),
+                        ))
+                        .map_err(Error::Term)?;
                 }
             }
             Key::Char(k) => {
-                curse.seek(SeekFrom::Current(1))?;
+                curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
                 if *k == '\n' {
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
@@ -87,7 +100,7 @@ async fn main() -> Result<()> {
                 } else {
                     let cmd = curse.get_mut();
                     cmd.push(*k);
-                    write!(stdout, "{}", k)?;
+                    write!(stdout, "{}", k).map_err(Error::Inout)?;
                     //print!("{}", cursor::Right(1));
                     //print!("{}", *k);
                 }
@@ -115,7 +128,7 @@ async fn main() -> Result<()> {
                     print!("{}", rest);
                     print!("{}", termion::cursor::Restore);
                     //println!("\n\rDEBUG: {cmd}, REST: {rest}");
-                    curse.seek(SeekFrom::Current(-1))?;
+                    curse.seek(SeekFrom::Current(-1)).map_err(Error::Signal)?;
                 }
             }
             Key::Ctrl('u') => {
@@ -126,12 +139,16 @@ async fn main() -> Result<()> {
             Key::Left => {
                 if curse.position() > 0 {
                     print!("{}", termion::cursor::Left(1));
-                    curse.seek(std::io::SeekFrom::Current(-1))?;
+                    curse
+                        .seek(std::io::SeekFrom::Current(-1))
+                        .map_err(Error::Signal)?;
                 }
             }
             Key::Right => {
                 if (curse.position() as usize) < curse.get_ref().len() {
-                    curse.seek(std::io::SeekFrom::Current(1))?;
+                    curse
+                        .seek(std::io::SeekFrom::Current(1))
+                        .map_err(Error::Signal)?;
                     print!("\x1b[C")
                 }
             }
@@ -140,8 +157,8 @@ async fn main() -> Result<()> {
                 shell_return();
             }
         }
-        stdout.activate_raw_mode()?;
-        stdout.flush()?;
+        stdout.activate_raw_mode().map_err(Error::Term)?;
+        stdout.flush().map_err(Error::Inout)?;
         //}
     }
     Ok(())
@@ -162,34 +179,31 @@ async fn process_command(
     }
     let cmd = args[0].to_owned();
     println!("\r");
-    match cmd.as_str() {
-        "cd" => {
-            out.suspend_raw_mode()?;
-            if arguments.clone().count() == 0 {
-                let home = std::env::var("HOME").unwrap_or("/".to_owned());
-                std::env::set_current_dir(home)?;
-            } else {
-                std::env::set_current_dir(args[1])?;
-            }
-            shell_return();
-            return Ok(());
+    if cmd.as_str() == "cd" {
+        out.suspend_raw_mode().map_err(Error::Term)?;
+        if arguments.clone().count() == 0 {
+            let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());
+            std::env::set_current_dir(home).map_err(Error::Cd)?;
+        } else if let Err(e) = std::env::set_current_dir(args[1]).map_err(Error::Cd) {
+            eprintln!("{}", toml::to_string(&e).map_err(Error::Parse)?)
         }
-        _ => {}
+        shell_return();
+        return Ok(());
     };
     if args.len() == 1 {
-        out.suspend_raw_mode()?;
+        out.suspend_raw_mode().map_err(Error::Term)?;
         let mut output = Command::new(cmd);
         // get pid of process
-        let pid = output.spawn()?.id().unwrap();
+        let pid = output.spawn().unwrap().id().unwrap();
         let pid = Pid::from_raw(pid.try_into().unwrap());
-        waitpid(pid, Some(WaitPidFlag::WUNTRACED))?;
+        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
     } else {
-        out.suspend_raw_mode()?;
+        out.suspend_raw_mode().map_err(Error::Inout)?;
         let mut output = Command::new(cmd);
         output.args(arguments);
-        let pid = output.spawn()?.id().unwrap();
+        let pid = output.spawn().unwrap().id().unwrap();
         let pid = Pid::from_raw(pid.try_into().unwrap());
-        waitpid(pid, Some(WaitPidFlag::WUNTRACED))?;
+        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
         //TODO: Implement fg for returning these processes
     }
 

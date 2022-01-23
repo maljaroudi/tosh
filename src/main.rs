@@ -44,13 +44,17 @@ async fn main() -> Result<()> {
                 // Note: If we only have one word, remove everything.
                 let current_letter = curse.position();
                 let cmd = curse.get_mut();
-                let mut last_space = 0;
+                let mut last_space = cmd.rfind(' ').unwrap_or(0);
                 if !cmd.is_empty() {
                     if current_letter as usize == cmd.len() {
-                        last_space = cmd.rfind(' ').unwrap();
                         cmd.truncate(last_space);
                     } else {
-                        cmd.remove(current_letter as usize - 1);
+                        cmd.replace_range(
+                            current_letter as usize - last_space..current_letter as usize,
+                            "",
+                        );
+                        last_space = 0;
+                        //println!("\n\rDEBUG: {cmd}");
                     }
                     for _ in 0..current_letter as usize - last_space {
                         print!("\u{0008}");
@@ -92,12 +96,17 @@ async fn main() -> Result<()> {
             Key::Backspace => {
                 let current_letter = curse.position();
                 let cmd = curse.get_mut();
-                if !cmd.is_empty() {
+                if current_letter != 0 {
+                    //last_space = cmd.rfind(' ').unwrap_or(0);
                     if current_letter as usize == cmd.len() {
                         cmd.pop();
+                        //println!("\n\rDEBUG: {cmd}");
                     } else {
-                        cmd.remove(current_letter as usize - 1);
+                        cmd.remove(current_letter as usize);
+                        //last_space = 0;
+                        //print!("\n\rDEBUG: {cmd}");
                     }
+
                     print!("\u{0008}");
                     print!("{}", termion::cursor::Save);
 
@@ -105,6 +114,7 @@ async fn main() -> Result<()> {
                     let rest = cmd[current_letter as usize - 1..].to_owned();
                     print!("{}", rest);
                     print!("{}", termion::cursor::Restore);
+                    //println!("\n\rDEBUG: {cmd}, REST: {rest}");
                     curse.seek(SeekFrom::Current(-1))?;
                 }
             }

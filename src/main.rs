@@ -137,19 +137,36 @@ async fn main() -> Result<()> {
                 print!("\r> ");
             }
             Key::Left => {
-                if curse.position() > 0 {
-                    print!("{}", termion::cursor::Left(1));
+                if curse.position() != 0 {
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
+                    if term_curse_pos.0 == 1 {
+                        print!("{}", termion::cursor::Up(1));
+                        print!("{}", termion::cursor::Right(term_size.0));
+                    } else {
+                        print!("{}", termion::cursor::Left(1));
+                    }
                     curse
                         .seek(std::io::SeekFrom::Current(-1))
-                        .map_err(Error::Signal)?;
+                        .map_err(Error::Term)?;
                 }
             }
             Key::Right => {
                 if (curse.position() as usize) < curse.get_ref().len() {
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
+                    if term_curse_pos.0 == term_size.0 {
+                        print!("{}", termion::cursor::Down(1));
+                        print!("{}", termion::cursor::Left(term_size.0));
+                    } else {
+                        print!("{}", termion::cursor::Right(1));
+                    }
+
                     curse
                         .seek(std::io::SeekFrom::Current(1))
-                        .map_err(Error::Signal)?;
-                    print!("\x1b[C")
+                        .map_err(Error::Term)?;
                 }
             }
             _ => {

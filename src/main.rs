@@ -14,7 +14,9 @@ use std::sync::Arc;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
+use termion::style;
 use tokio::process::Command;
+use toml::toml;
 
 struct CleanUp;
 impl Drop for CleanUp {
@@ -47,7 +49,7 @@ async fn main() -> Result<()> {
         match c.as_ref().expect("ERROR FETCHING") {
             Key::Ctrl('q') => {
                 //stdout.activate_raw_mode()?;
-                println!("\r\nQUITTING TOSH, LOVE YOU <3\r");
+                println!("\r\nQUITTING TOSH, Take Care <3\r");
                 break;
             }
             Key::Ctrl('w') => {
@@ -196,24 +198,44 @@ async fn process_command(
     }
     let cmd = args[0].to_owned();
     println!("\r");
-    if cmd.as_str() == "cd" {
-        out.suspend_raw_mode().map_err(Error::Term)?;
-        if arguments.clone().count() == 0 {
-            let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());
-            std::env::set_current_dir(home).map_err(Error::Cd)?;
-        } else if let Err(e) = std::env::set_current_dir(args[1]).map_err(Error::Cd) {
-            eprintln!("{}", toml::to_string(&e).map_err(Error::Parse)?)
+    match cmd.as_str() {
+        "cd" => {
+            out.suspend_raw_mode().map_err(Error::Term)?;
+            if arguments.clone().count() == 0 {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());
+                std::env::set_current_dir(home).map_err(Error::Cd)?;
+            } else if let Err(e) = std::env::set_current_dir(args[1]).map_err(Error::Cd) {
+                eprintln!("{}", toml::to_string(&e).map_err(Error::Parse)?)
+            }
+            shell_return();
+            return Ok(());
         }
-        shell_return();
-        return Ok(());
+        "exit" => {
+            out.suspend_raw_mode().map_err(Error::Term)?;
+            std::process::exit(1);
+        }
+        _ => {}
     };
     if args.len() == 1 {
         out.suspend_raw_mode().map_err(Error::Term)?;
         let mut output = Command::new(cmd);
-        // get pid of process
-        let pid = output.spawn().unwrap().id().unwrap();
-        let pid = Pid::from_raw(pid.try_into().unwrap());
-        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        if let Ok(process) = output.spawn() {
+            let pid = process.id().unwrap();
+            let pid = Pid::from_raw(pid.try_into().unwrap());
+            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        } else {
+            let cmd_str = format!("Command Not Found {}", args[0]);
+
+            eprint!(
+                "{}",
+                toml! {
+                    [Error]
+                    Source = cmd_str
+                }
+            );
+            shell_return();
+            return Ok(());
+        }
     } else {
         out.suspend_raw_mode().map_err(Error::Inout)?;
         let mut output = Command::new(cmd);
@@ -234,5 +256,5 @@ fn tab_completion() {
 }
 
 fn shell_return() {
-    print!("\r\n> ");
+    print!("\r\n{}⡢ {}", style::Bold, style::Reset);
 }

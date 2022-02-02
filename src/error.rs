@@ -1,4 +1,4 @@
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
 use serde::ser::SerializeMap;
 use toml::{value::Map, Value};
@@ -9,6 +9,7 @@ pub enum Error {
     Term(std::io::Error),
     Signal(std::io::Error),
     Parse(toml::ser::Error),
+    Cmd(std::io::Error),
 }
 
 impl serde::ser::Serialize for Error {
@@ -17,12 +18,15 @@ impl serde::ser::Serialize for Error {
         S: serde::Serializer,
     {
         match self {
-            e @ Error::Cd(inner) => {
+            _e @ Error::Cd(inner) => {
                 let mut map = serializer.serialize_map(Some(1))?;
                 //create a map
                 let mut mapper = Map::new();
                 // insert type into mapper
-                mapper.insert("type".to_string(), Value::String("cd Error (chdir)".to_string()));
+                mapper.insert(
+                    "type".to_string(),
+                    Value::String("cd Error (chdir)".to_string()),
+                );
                 // add the source
                 mapper.insert("source".to_string(), toml::Value::String(inner.to_string()));
                 map.serialize_entry("error", &mapper)?;

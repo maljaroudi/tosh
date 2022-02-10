@@ -38,7 +38,8 @@ async fn main() -> Result<()> {
         .map_err(Error::Signal)?;
 
     let mut stdout = stdout().into_raw_mode().map_err(Error::Term)?;
-
+    let mut history: Vec<String> = vec![];
+    let mut history_index = 0;
     let stdin = stdin();
     let mut curse: Cursor<String> = Cursor::new(String::new());
 
@@ -53,6 +54,7 @@ async fn main() -> Result<()> {
                 break;
             }
             Key::Ctrl('w') => {
+                history_index = history.len();
                 // ctrl+w will delete the last word. It's the same as backspace, but we use the last occuring space to remove the entire word.
                 // Note: If we only have one word, remove everything.
                 let current_letter = curse.position();
@@ -89,17 +91,23 @@ async fn main() -> Result<()> {
                 }
             }
             Key::Char(k) => {
+                // reset history cursor to the end of the history
+
                 curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
                 if *k == '\n' {
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
+                    history.push(string.to_owned());
                     process_command(string, &mut stdout).await?;
                     curse.set_position(0);
                     curse = Cursor::new(String::new());
+                    history_index = history.len();
                     //
                 } else if *k == '\t' {
+                    history_index = 0;
                     tab_completion()
                 } else {
+                    history_index = 0;
                     let cmd = curse.get_mut();
                     cmd.push(*k);
                     write!(stdout, "{}", k).map_err(Error::Inout)?;
@@ -109,6 +117,7 @@ async fn main() -> Result<()> {
             }
             Key::BackTab => tab_completion(),
             Key::Backspace => {
+                history_index = history.len();
                 let current_letter = curse.position();
                 let cmd = curse.get_mut();
                 if current_letter != 0 {
@@ -134,11 +143,13 @@ async fn main() -> Result<()> {
                 }
             }
             Key::Ctrl('u') => {
+                history_index = history.len();
                 print!("{}", termion::clear::CurrentLine);
                 curse = Cursor::new(String::new());
                 print!("\r> ");
             }
             Key::Left => {
+                history_index = history.len();
                 if curse.position() != 0 {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
@@ -155,6 +166,7 @@ async fn main() -> Result<()> {
                 }
             }
             Key::Right => {
+                history_index = history.len();
                 if (curse.position() as usize) < curse.get_ref().len() {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
@@ -171,13 +183,30 @@ async fn main() -> Result<()> {
                         .map_err(Error::Term)?;
                 }
             }
+            Key::Up => {
+                if !history.is_empty() {
+                    if history_index == 0 {
+                        history_index = history.len();
+                    }
+                    history_index -= 1;
+                    let cmd = curse.get_mut();
+                    cmd.clear();
+                    cmd.push_str(&history[history_index]);
+                    print!("{}", termion::clear::CurrentLine);
+                    print!("\r⡢ {cmd}");
+                    curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                }
+            }
+            Key::Down => {}
             _ => {
+                history_index = history.len();
                 curse = Cursor::new(String::new());
                 shell_return();
             }
         }
         stdout.activate_raw_mode().map_err(Error::Term)?;
         stdout.flush().map_err(Error::Inout)?;
+
         //}
     }
     Ok(())

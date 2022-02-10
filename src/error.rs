@@ -10,6 +10,7 @@ pub enum Error {
     Signal(std::io::Error),
     Parse(toml::ser::Error),
     Cmd(std::io::Error),
+    File(std::io::Error),
 }
 
 impl serde::ser::Serialize for Error {

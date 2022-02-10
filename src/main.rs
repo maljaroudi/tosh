@@ -5,6 +5,7 @@ use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
+use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
@@ -95,9 +96,15 @@ async fn main() -> Result<()> {
 
                 curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
                 if *k == '\n' {
+                    // handle exit only, i don't like how it's handled now
+
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
                     history.push(string.to_owned());
+                    if string.trim() == "exit" {
+                        print!("\r\nBye!\r");
+                        break;
+                    }
                     process_command(string, &mut stdout).await?;
                     curse.set_position(0);
                     curse = Cursor::new(String::new());
@@ -225,6 +232,7 @@ async fn main() -> Result<()> {
 
         //}
     }
+    save_history(history);
     Ok(())
 }
 
@@ -302,4 +310,17 @@ fn tab_completion() {
 
 fn shell_return() {
     print!("\r\n{}⡢ {}", style::Bold, style::Reset);
+}
+fn save_history(history: Vec<String>) -> Result<()> {
+    let mut fd = OpenOptions::new()
+        .append(true)
+        .create(true)
+        .open("history.tosh")
+        .map_err(Error::File)?;
+    let mut f = std::io::BufWriter::new(fd);
+    writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
+    //history
+    //   .iter()
+    // .for_each(|s| f.write_all(s.as_bytes()).unwrap());
+    Ok(())
 }

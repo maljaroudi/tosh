@@ -232,7 +232,7 @@ async fn main() -> Result<()> {
 
         //}
     }
-    save_history(history);
+    save_history(history)?;
     Ok(())
 }
 
@@ -312,15 +312,12 @@ fn shell_return() {
     print!("\r\n{}⡢ {}", style::Bold, style::Reset);
 }
 fn save_history(history: Vec<String>) -> Result<()> {
-    let mut fd = OpenOptions::new()
+    let fd = OpenOptions::new()
         .append(true)
         .create(true)
-        .open("history.tosh")
+        .open(dirs::home_dir().unwrap().join("history.tosh"))
         .map_err(Error::File)?;
     let mut f = std::io::BufWriter::new(fd);
     writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
-    //history
-    //   .iter()
-    // .for_each(|s| f.write_all(s.as_bytes()).unwrap());
     Ok(())
 }

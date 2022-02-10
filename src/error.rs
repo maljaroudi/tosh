@@ -9,7 +9,7 @@ pub enum Error {
     Term(std::io::Error),
     Signal(std::io::Error),
     Parse(toml::ser::Error),
-    Cmd(std::io::Error),
+    _Cmd(std::io::Error),
     File(std::io::Error),
 }
 

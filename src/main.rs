@@ -184,10 +184,7 @@ async fn main() -> Result<()> {
                 }
             }
             Key::Up => {
-                if !history.is_empty() {
-                    if history_index == 0 {
-                        history_index = history.len();
-                    }
+                if !history.is_empty() && history_index > 0 {
                     history_index -= 1;
                     let cmd = curse.get_mut();
                     cmd.clear();
@@ -197,7 +194,26 @@ async fn main() -> Result<()> {
                     curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
                 }
             }
-            Key::Down => {}
+            Key::Down => {
+                if !history.is_empty() && history_index != history.len() {
+                    if history_index == history.len() - 1 {
+                        history_index += 1;
+                        let cmd = curse.get_mut();
+                        cmd.clear();
+                        print!("{}", termion::clear::CurrentLine);
+                        print!("\r⡢ {cmd}");
+                        curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                    } else {
+                        history_index += 1;
+                        let cmd = curse.get_mut();
+                        cmd.clear();
+                        cmd.push_str(&history[history_index]);
+                        print!("{}", termion::clear::CurrentLine);
+                        print!("\r⡢ {cmd}");
+                        curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                    }
+                }
+            }
             _ => {
                 history_index = history.len();
                 curse = Cursor::new(String::new());

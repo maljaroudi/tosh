@@ -40,7 +40,9 @@ async fn main() -> Result<()> {
 
     let mut stdout = stdout().into_raw_mode().map_err(Error::Term)?;
     let mut history: Vec<String> = vec![];
-    let mut history_index = 0;
+    populate_history(&mut history)?;
+    println!("{}",history.len());
+    let mut history_index = history.len();
     let stdin = stdin();
     let mut curse: Cursor<String> = Cursor::new(String::new());
 
@@ -100,9 +102,12 @@ async fn main() -> Result<()> {
 
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
+                    if string.is_empty() {
+                        continue
+                    }
                     history.push(string.to_owned());
                     if string.trim() == "exit" {
-                        print!("\r\nBye!\r");
+                        print!("\r\nBye!!!!!!!!!!!!!!!!!!!\r");
                         break;
                     }
                     process_command(string, &mut stdout).await?;
@@ -263,10 +268,6 @@ async fn process_command(
             shell_return();
             return Ok(());
         }
-        "exit" => {
-            out.suspend_raw_mode().map_err(Error::Term)?;
-            std::process::exit(1);
-        }
         _ => {}
     };
     if args.len() == 1 {
@@ -312,12 +313,21 @@ fn shell_return() {
     print!("\r\n{}⡢ {}", style::Bold, style::Reset);
 }
 fn save_history(history: Vec<String>) -> Result<()> {
-    let fd = OpenOptions::new()
-        .append(true)
-        .create(true)
+    let fd = OpenOptions::new().write(true).create(true)
         .open(dirs::home_dir().unwrap().join("history.tosh"))
         .map_err(Error::File)?;
     let mut f = std::io::BufWriter::new(fd);
     writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
     Ok(())
+}
+fn populate_history(history: &mut Vec<String>) -> Result<()>{
+use std::io::BufRead;
+let fd = OpenOptions::new().read(true).write(true).create(true).open(dirs::home_dir().unwrap().join("history.tosh"))
+.map_err(Error::File)?;
+
+let f = std::io::BufReader::new(fd);
+f.lines().for_each(|l| history.push(l.unwrap()));
+Ok(())
+
+
 }

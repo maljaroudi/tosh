@@ -18,7 +18,7 @@ use termion::raw::IntoRawMode;
 use termion::style;
 use tokio::process::Command;
 use toml::toml;
-
+use serde::{Serialize,Deserialize};
 struct CleanUp;
 impl Drop for CleanUp {
     fn drop(&mut self) {
@@ -107,7 +107,8 @@ async fn main() -> Result<()> {
                     }
                     history.push(string.to_owned());
                     if string.trim() == "exit" {
-                        print!("\r\nBye!!!!!!!!!!!!!!!!!!!\r");
+                        test_configurator().unwrap();
+                        print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                         break;
                     }
                     process_command(string, &mut stdout).await?;
@@ -330,4 +331,29 @@ f.lines().for_each(|l| history.push(l.unwrap()));
 Ok(())
 
 
+}
+use std::collections::HashMap;
+#[derive(Serialize,Deserialize)]
+struct Conf {
+    alias: HashMap<String,String>,
+    env: HashMap<String,String>
+}
+impl Default for Conf {
+    fn default() -> Self {
+    Self {
+    alias: HashMap::new(),
+    env: HashMap::new(),
+    }
+  }
+}
+fn test_configurator() -> Result<()> {
+    let fd = OpenOptions::new().write(true).create(true)
+        .open(dirs::home_dir().unwrap().join("tosh_config.toml"))
+        .map_err(Error::File)?;
+    let mut f = std::io::BufWriter::new(fd);
+    let mut conf = Conf::default();
+    conf.alias.insert("cr".to_owned(),"cargo run".to_owned());
+    let tt = toml::to_string(&conf).map_err(Error::Parse)?;
+    writeln!(f, "{}", tt).map_err(Error::File)?;
+    Ok(())
 }

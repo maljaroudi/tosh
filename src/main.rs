@@ -1,6 +1,7 @@
 // TODO: The entire program needs to be rewritten.
 // We should only take stdin but do everything on the cursor instead
 mod error;
+mod config;
 use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
@@ -107,7 +108,6 @@ async fn main() -> Result<()> {
                     }
                     history.push(string.to_owned());
                     if string.trim() == "exit" {
-                        test_configurator().unwrap();
                         print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                         break;
                     }
@@ -332,28 +332,4 @@ Ok(())
 
 
 }
-use std::collections::HashMap;
-#[derive(Serialize,Deserialize)]
-struct Conf {
-    alias: HashMap<String,String>,
-    env: HashMap<String,String>
-}
-impl Default for Conf {
-    fn default() -> Self {
-    Self {
-    alias: HashMap::new(),
-    env: HashMap::new(),
-    }
-  }
-}
-fn test_configurator() -> Result<()> {
-    let fd = OpenOptions::new().write(true).create(true)
-        .open(dirs::home_dir().unwrap().join("tosh_config.toml"))
-        .map_err(Error::File)?;
-    let mut f = std::io::BufWriter::new(fd);
-    let mut conf = Conf::default();
-    conf.alias.insert("cr".to_owned(),"cargo run".to_owned());
-    let tt = toml::to_string(&conf).map_err(Error::Parse)?;
-    writeln!(f, "{}", tt).map_err(Error::File)?;
-    Ok(())
-}
+

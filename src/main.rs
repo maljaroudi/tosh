@@ -1,11 +1,13 @@
 // TODO: The entire program needs to be rewritten.
 // We should only take stdin but do everything on the cursor instead
-mod error;
 mod config;
+mod error;
+use config::Conf;
 use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
+use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -19,7 +21,6 @@ use termion::raw::IntoRawMode;
 use termion::style;
 use tokio::process::Command;
 use toml::toml;
-use serde::{Serialize,Deserialize};
 struct CleanUp;
 impl Drop for CleanUp {
     fn drop(&mut self) {
@@ -42,10 +43,12 @@ async fn main() -> Result<()> {
     let mut stdout = stdout().into_raw_mode().map_err(Error::Term)?;
     let mut history: Vec<String> = vec![];
     populate_history(&mut history)?;
-    println!("{}",history.len());
+    println!("{}", history.len());
     let mut history_index = history.len();
     let stdin = stdin();
     let mut curse: Cursor<String> = Cursor::new(String::new());
+
+    let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
 
     shell_return();
     stdout.flush().map_err(Error::Inout)?;
@@ -104,14 +107,14 @@ async fn main() -> Result<()> {
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
                     if string.is_empty() {
-                        continue
+                        continue;
                     }
                     history.push(string.to_owned());
                     if string.trim() == "exit" {
                         print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                         break;
                     }
-                    process_command(string, &mut stdout).await?;
+                    process_command(string, &mut stdout, &mut config).await?;
                     curse.set_position(0);
                     curse = Cursor::new(String::new());
                     history_index = history.len();
@@ -245,6 +248,7 @@ async fn main() -> Result<()> {
 async fn process_command(
     input: &str,
     out: &mut termion::raw::RawTerminal<std::io::Stdout>,
+    conf: &mut Conf,
 ) -> Result<()> {
     let t = input.strip_prefix('\n').unwrap_or(input);
     // get args
@@ -268,6 +272,16 @@ async fn process_command(
             }
             shell_return();
             return Ok(());
+        }
+        "add_to_env" => {
+            if arguments.clone().count() < 2 {
+                eprintln!("Invalid Number of Args");
+            } else {
+                conf.add_env_var((args[1].to_string(), args[2].to_string()));
+                conf.save_conf().unwrap();
+                shell_return();
+                return Ok(());
+            }
         }
         _ => {}
     };
@@ -314,22 +328,25 @@ fn shell_return() {
     print!("\r\n{}⡢ {}", style::Bold, style::Reset);
 }
 fn save_history(history: Vec<String>) -> Result<()> {
-    let fd = OpenOptions::new().write(true).create(true)
+    let fd = OpenOptions::new()
+        .write(true)
+        .create(true)
         .open(dirs::home_dir().unwrap().join("history.tosh"))
         .map_err(Error::File)?;
     let mut f = std::io::BufWriter::new(fd);
     writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
     Ok(())
 }
-fn populate_history(history: &mut Vec<String>) -> Result<()>{
-use std::io::BufRead;
-let fd = OpenOptions::new().read(true).write(true).create(true).open(dirs::home_dir().unwrap().join("history.tosh"))
-.map_err(Error::File)?;
+fn populate_history(history: &mut Vec<String>) -> Result<()> {
+    use std::io::BufRead;
+    let fd = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(dirs::home_dir().unwrap().join("history.tosh"))
+        .map_err(Error::File)?;
 
-let f = std::io::BufReader::new(fd);
-f.lines().for_each(|l| history.push(l.unwrap()));
-Ok(())
-
-
+    let f = std::io::BufReader::new(fd);
+    f.lines().for_each(|l| history.push(l.unwrap()));
+    Ok(())
 }
-

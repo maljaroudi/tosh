@@ -49,7 +49,6 @@ async fn main() -> Result<()> {
     let mut curse: Cursor<String> = Cursor::new(String::new());
 
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
-
     shell_return();
     stdout.flush().map_err(Error::Inout)?;
 
@@ -242,6 +241,7 @@ async fn main() -> Result<()> {
         //}
     }
     save_history(history)?;
+    config.save_conf()?;
     Ok(())
 }
 
@@ -277,7 +277,7 @@ async fn process_command(
             if arguments.clone().count() < 2 {
                 eprintln!("Invalid Number of Args");
             } else {
-                conf.add_env_var((args[1].to_string(), args[2].to_string()));
+                conf.add_env_var((args[1].to_string(), args[2].to_string()))?;
                 conf.save_conf().unwrap();
                 shell_return();
                 return Ok(());

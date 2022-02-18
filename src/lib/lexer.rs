@@ -5,7 +5,7 @@ enum Token {
     Pipe,
 
     // Or regular expressions.
-   #[regex(r"\([^)]*\)")]
+    #[regex(r"\([^)]*\)")]
     Parens,
     #[regex("[a-zA-Z]+")]
     Text,
@@ -14,9 +14,7 @@ enum Token {
     // or any other matches we wish to skip.
     #[regex(r"[ \t\n\f]+", logos::skip)]
     Error,
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -28,7 +26,6 @@ mod tests {
     fn lex_pipe_test() {
         let mut lex = Token::lexer("(ridiculouslyfastLexers)");
         assert_eq!(lex.next(), Some(Token::Parens));
-        assert_eq!("(ridiculouslyfastLexers)",lex.slice())
-
+        assert_eq!("(ridiculouslyfastLexers)", lex.slice())
     }
 }

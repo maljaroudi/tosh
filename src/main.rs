@@ -7,7 +7,6 @@ use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
-use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;

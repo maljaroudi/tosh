@@ -11,7 +11,7 @@ pub enum Error {
     Parse(toml::ser::Error),
     _Cmd(std::io::Error),
     File(std::io::Error),
-    Config(std::env::VarError)
+    Config(std::env::VarError),
 }
 
 impl serde::ser::Serialize for Error {

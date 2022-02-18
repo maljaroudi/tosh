@@ -1,3 +1,4 @@
+use crate::error::Error::*;
 use crate::error::Error;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -8,12 +9,14 @@ type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Serialize, Deserialize, Default)]
 pub struct Conf {
-    alias: HashMap<String, String>,
+    alias: Option<HashMap<String, String>>,
     env: HashMap<String, Vec<String>>,
 }
 impl Conf {
     fn add_alias(&mut self, alias: (String, String)) -> Result<()> {
-        self.alias.insert(alias.0, alias.1).unwrap();
+        if let Some( hash) = &mut self.alias {
+            hash.insert(alias.0, alias.1).unwrap();
+        }
         Ok(())
     }
     pub fn add_env_var(&mut self, envvar: (String, String)) {
@@ -32,6 +35,7 @@ impl Conf {
         Ok(())
     }
     pub fn load_conf() -> Result<Self> {
+        let paths = std::env::vars().map(|x| (x.0,x.1.split(':').map(|x|x.to_owned()).collect::<Vec<String>>())).collect::<HashMap<String,Vec<String>>>();
         let fd = OpenOptions::new()
             .read(true)
             .open(dirs::home_dir().unwrap().join("tosh_config.toml"))
@@ -39,7 +43,9 @@ impl Conf {
         let mut t = std::io::BufReader::new(fd);
         let mut conf_str = String::new();
         t.read_to_string(&mut conf_str).unwrap();
-        let conf: Self = toml::from_str(&conf_str).unwrap();
+        let mut conf: Self = toml::from_str(&conf_str).unwrap();
+        conf.env = paths;
+
         Ok(conf)
     }
 }

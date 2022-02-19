@@ -27,8 +27,6 @@ mod tests {
         let mut lex = Token::lexer("$(ridiculouslyfastLexers) Hello");
         assert_eq!(lex.next(), Some(Token::Parens));
         assert_eq!("$(ridiculouslyfastLexers)", lex.slice());
-        assert_eq!(lex.next(),Some(Token::Text));
-        
+        assert_eq!(lex.next(), Some(Token::Text));
     }
-
 }

@@ -123,17 +123,16 @@ async fn main() -> Result<()> {
                 } else {
                     history_index = 0;
                     let cur_pos = curse.position() as usize;
-                    let  cmd = curse.get_mut();
-                    if cur_pos.saturating_sub(1)< cmd.len() && !cmd.is_empty() {
-                        cmd.insert(cur_pos-1, *k);
+                    let cmd = curse.get_mut();
+                    if cur_pos.saturating_sub(1) < cmd.len() && !cmd.is_empty() {
+                        cmd.insert(cur_pos - 1, *k);
                         print!("{}", termion::cursor::Save);
-                        write!(stdout,"{}",&cmd[cur_pos-1..]).map_err(Error::Inout)?;
+                        write!(stdout, "{}", &cmd[cur_pos - 1..]).map_err(Error::Inout)?;
                         print!("{}", termion::cursor::Restore);
                         print!("{}", termion::cursor::Right(1));
-                    }
-                    else {
-                    cmd.push(*k);
-                    write!(stdout, "{}", k).map_err(Error::Inout)?;
+                    } else {
+                        cmd.push(*k);
+                        write!(stdout, "{}", k).map_err(Error::Inout)?;
                     }
                     //print!("{}", cursor::Right(1));
                     //print!("{}", *k);

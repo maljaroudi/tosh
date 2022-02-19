@@ -1,187 +1,361 @@
+// TODO: The entire program needs to be rewritten.
+// We should only take stdin but do everything on the cursor instead
+mod config;
 mod error;
-use std::{
-    env, fs,
-    io::{stderr, stdin, stdout, BufRead, Write},
-    path::Path,
-    process::Command,
-};
-
-use error::*;
-use snafu::ResultExt;
-type Result<T, E = Errors> = std::result::Result<T, E>;
-fn main() -> Result<()> {
-    // init for sheller, use stdin
-    let mut stdin = stdin();
-    // lock stdin
-    let mut t = stdin.lock();
-    // call sheller with stdin
-    print!("\x1b[2J");
-    // use \e[3J
-    print!("\x1b[3J");
-    sheller(&mut t)?;
-    Ok(())
+use config::Conf;
+use crossterm::terminal;
+use error::Error;
+use nix::sys::wait::*;
+use nix::unistd::Pid;
+use std::fs::OpenOptions;
+use std::io::Seek;
+use std::io::SeekFrom;
+use std::io::Write;
+use std::io::{stdin, stdout, Cursor};
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+use termion::event::Key;
+use termion::input::TermRead;
+use termion::raw::IntoRawMode;
+use termion::style;
+use tokio::process::Command;
+use toml::toml;
+struct CleanUp;
+impl Drop for CleanUp {
+    fn drop(&mut self) {
+        terminal::disable_raw_mode().expect("Unable to disable raw mode")
+    }
 }
 
-fn sheller<R: BufRead>(input: &mut R) -> Result<()> {
-    //input.read_line(&mut line).unwrap();
-    //let line: i32 = line.trim().parse().context(PraseStdin)?;
-    // -----------------------------------------------------
-    stdout().write_all(b"\x1b[1;1H").unwrap();
-    loop {
-        // clear screen
-        //print!("\x1b[2J");
+type Result<T> = std::result::Result<T, error::Error>;
 
-        print!("\r{}>", env::current_dir().unwrap().display());
-        stdout().flush().unwrap();
-        let mut line = String::new();
-        input.read_line(&mut line).unwrap();
+#[tokio::main]
+async fn main() -> Result<()> {
+    let term = Arc::new(AtomicBool::new(false));
+    signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
+        .map_err(Error::Signal)?;
+    signal_hook::flag::register(signal_hook::consts::SIGQUIT, Arc::clone(&term))
+        .map_err(Error::Signal)?;
+    signal_hook::flag::register(signal_hook::consts::SIGTSTP, Arc::clone(&term))
+        .map_err(Error::Signal)?;
 
-        let mut parts = line.trim().split_whitespace();
-        let command = parts.next().unwrap_or("");
-        let args = parts;
-        // stdout defination
-        let stdout = stdout();
-        //let mut stdout = stdout.lock();
-        // check tab completion
-        if command == "tab" {
-            let mut cmd = Command::new("bash");
-            cmd.arg("-c").arg("compgen -ac");
-            let output = cmd.output().unwrap();
-            let mut stdout = stdout.lock();
-            stdout.write_all(&output.stdout).unwrap();
-            continue;
-        }
-        match command {
-            "cd" => {
-                let new_dir = args.peekable().peek().map_or("~/", |x| *x);
-                let root = Path::new(new_dir);
-                if let Err(result) = env::set_current_dir(&root).context(CdError) {
-                    let t = toml::to_string(&result).unwrap();
+    let mut stdout = stdout().into_raw_mode().map_err(Error::Term)?;
+    let mut history: Vec<String> = vec![];
+    populate_history(&mut history)?;
+    println!("{}", history.len());
+    let mut history_index = history.len();
+    let stdin = stdin();
+    let mut curse: Cursor<String> = Cursor::new(String::new());
 
-                    eprintln!("{}", t);
-                }
+    let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
+    shell_return();
+    stdout.flush().map_err(Error::Inout)?;
+
+    for c in stdin.keys() {
+        match c.as_ref().expect("ERROR FETCHING") {
+            Key::Ctrl('q') => {
+                //stdout.activate_raw_mode()?;
+                println!("\r\nQUITTING TOSH, Take Care <3\r");
+                break;
             }
-            "exit" => return Ok(()),
-            "" => continue,
-            "ls" => {
-                // use system's ls command
-                // run windows internal command "Dir" to list files // check if windows
-                if cfg!(windows) {
-                    let mut cmd = Command::new("powershell")
-                        .arg("/c")
-                        .arg("ls")
-                        .output()
-                        .unwrap();
-                    let mut stdout = stdout.lock();
-                    stdout.write_all(&cmd.stdout).unwrap();
-                } else {
-                    let mut cmd = Command::new("ls").arg("-l").output().unwrap();
-                    let mut stdout = stdout.lock();
-                    stdout.write_all(&cmd.stdout).unwrap();
-                }
-                // let mut stdout = stdout.lock();
-                // stdout.write_all(&cmd.stdout).unwrap();
-            }
-            // handle mkdir
-            "mkdir" => {
-                let mut args = args.peekable();
-                let dir = args.next().unwrap_or("");
-                let dir = Path::new(dir);
-                // if -p is set, create parent dir
-                if args.peek() == Some(&"-p") {
-                    if let Err(e) = fs::create_dir_all(dir) {
-                        eprintln!("{}", e);
+            Key::Ctrl('w') => {
+                history_index = history.len();
+                // ctrl+w will delete the last word. It's the same as backspace, but we use the last occuring space to remove the entire word.
+                // Note: If we only have one word, remove everything.
+                let current_letter = curse.position();
+                let cmd = curse.get_mut();
+                let mut last_space = cmd.rfind(' ').unwrap_or(0);
+                if !cmd.is_empty() {
+                    if current_letter as usize == cmd.len() {
+                        cmd.truncate(last_space);
+                    } else {
+                        cmd.replace_range(
+                            current_letter as usize - last_space..current_letter as usize,
+                            "",
+                        );
+                        last_space = 0;
+                        //println!("\n\rDEBUG: {cmd}");
                     }
-                } else if let Err(e) = fs::create_dir(dir) {
-                    eprintln!("{}", e);
+                    for _ in 0..current_letter as usize - last_space {
+                        print!("\u{0008}");
+                    }
+                    print!("{}", termion::cursor::Save);
+
+                    print!("{}", termion::clear::AfterCursor);
+                    let rest = cmd[last_space..].to_owned();
+                    print!("{}", rest);
+                    print!("{}", termion::cursor::Restore);
+                    //println!("\n\rDEBUG: {cmd}, REST: {rest}");
+                    curse
+                        .seek(SeekFrom::Current(
+                            (-(current_letter as isize - last_space as isize))
+                                .try_into()
+                                .unwrap(),
+                        ))
+                        .map_err(Error::Term)?;
                 }
             }
-            "clear" => {
-                //unimplemented!() // clear terminal
-                //clear the terminal
-                let mut stdout = stdout.lock();
-                //flush the buffer
-                stdout.flush().unwrap();
-                // use '\e[3J' to clear the screen
-                print!("\x1b[2J");
-                // use \e[3J
-                print!("\x1b[3J");
-                stdout.write_all(b"\x1b[1;1H").unwrap();
-                //lock the top of the screen
+            Key::Char(k) => {
+                // reset history cursor to the end of the history
+
+                curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
+                if *k == '\n' {
+                    // handle exit only, i don't like how it's handled now
+
+                    let string = curse.get_ref();
+                    //stdout.suspend_raw_mode()?;
+                    if string.is_empty() {
+                        continue;
+                    }
+                    history.push(string.to_owned());
+                    if string.trim() == "exit" {
+                        print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
+                        break;
+                    }
+                    process_command(string, &mut stdout, &mut config).await?;
+                    curse.set_position(0);
+                    curse = Cursor::new(String::new());
+                    history_index = history.len();
+                    //
+                } else if *k == '\t' {
+                    history_index = 0;
+                    tab_completion()
+                } else {
+                    history_index = 0;
+                    let cur_pos = curse.position() as usize;
+                    let  cmd = curse.get_mut();
+                    if cur_pos.saturating_sub(1)< cmd.len() && !cmd.is_empty() {
+                        cmd.insert(cur_pos-1, *k);
+                        print!("{}", termion::cursor::Save);
+                        write!(stdout,"{}",&cmd[cur_pos-1..]).map_err(Error::Inout)?;
+                        print!("{}", termion::cursor::Restore);
+                        print!("{}", termion::cursor::Right(1));
+                    }
+                    else {
+                    cmd.push(*k);
+                    write!(stdout, "{}", k).map_err(Error::Inout)?;
+                    }
+                    //print!("{}", cursor::Right(1));
+                    //print!("{}", *k);
+                }
+            }
+            Key::BackTab => tab_completion(),
+            Key::Backspace => {
+                history_index = history.len();
+                let current_letter = curse.position();
+                let cmd = curse.get_mut();
+                if current_letter != 0 {
+                    //last_space = cmd.rfind(' ').unwrap_or(0);
+                    if current_letter as usize == cmd.len() {
+                        cmd.pop();
+                        //println!("\n\rDEBUG: {cmd}");
+                    } else {
+                        cmd.remove(current_letter as usize);
+                        //last_space = 0;
+                        //print!("\n\rDEBUG: {cmd}");
+                    }
+
+                    print!("\u{0008}");
+                    print!("{}", termion::cursor::Save);
+
+                    print!("{}", termion::clear::AfterCursor);
+                    let rest = cmd[current_letter as usize - 1..].to_owned();
+                    print!("{}", rest);
+                    print!("{}", termion::cursor::Restore);
+                    //println!("\n\rDEBUG: {cmd}, REST: {rest}");
+                    curse.seek(SeekFrom::Current(-1)).map_err(Error::Signal)?;
+                }
+            }
+            Key::Ctrl('u') => {
+                history_index = history.len();
+                print!("{}", termion::clear::CurrentLine);
+                curse = Cursor::new(String::new());
+                print!("\r> ");
+            }
+            Key::Left => {
+                history_index = history.len();
+                if curse.position() != 0 {
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
+                    if term_curse_pos.0 == 1 {
+                        print!("{}", termion::cursor::Up(1));
+                        print!("{}", termion::cursor::Right(term_size.0));
+                    } else {
+                        print!("{}", termion::cursor::Left(1));
+                    }
+                    curse
+                        .seek(std::io::SeekFrom::Current(-1))
+                        .map_err(Error::Term)?;
+                }
+            }
+            Key::Right => {
+                history_index = history.len();
+                if (curse.position() as usize) < curse.get_ref().len() {
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
+                    if term_curse_pos.0 == term_size.0 {
+                        print!("{}", termion::cursor::Down(1));
+                        print!("{}", termion::cursor::Left(term_size.0));
+                    } else {
+                        print!("{}", termion::cursor::Right(1));
+                    }
+
+                    curse
+                        .seek(std::io::SeekFrom::Current(1))
+                        .map_err(Error::Term)?;
+                }
+            }
+            Key::Up => {
+                if !history.is_empty() && history_index > 0 {
+                    history_index -= 1;
+                    let cmd = curse.get_mut();
+                    cmd.clear();
+                    cmd.push_str(&history[history_index]);
+                    print!("{}", termion::clear::CurrentLine);
+                    print!("\r⡢ {cmd}");
+                    curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                }
+            }
+            Key::Down => {
+                if !history.is_empty() && history_index != history.len() {
+                    if history_index == history.len() - 1 {
+                        history_index += 1;
+                        let cmd = curse.get_mut();
+                        cmd.clear();
+                        print!("{}", termion::clear::CurrentLine);
+                        print!("\r⡢ {cmd}");
+                        curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                    } else {
+                        history_index += 1;
+                        let cmd = curse.get_mut();
+                        cmd.clear();
+                        cmd.push_str(&history[history_index]);
+                        print!("{}", termion::clear::CurrentLine);
+                        print!("\r⡢ {cmd}");
+                        curse.seek(SeekFrom::End(0)).map_err(Error::Term)?;
+                    }
+                }
             }
             _ => {
-                // throw error
-                Command::new(command);
+                history_index = history.len();
+                curse = Cursor::new(String::new());
+                shell_return();
             }
-            command => {
-                let child = Command::new(command).args(args).spawn();
-
-                // gracefully handle malformed user input
-                match child {
-                    Ok(mut child) => {
-                        child.wait();
-                    }
-                    Err(e) => eprintln!("{}", e),
-                };
-            } // empty line
         }
+        stdout.activate_raw_mode().map_err(Error::Term)?;
+        stdout.flush().map_err(Error::Inout)?;
+
+        //}
     }
-    // -----------------------------------------------------
+    save_history(history)?;
+    config.save_conf()?;
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use std::fs::OpenOptions;
-    use std::io::Write;
+async fn process_command(
+    input: &str,
+    out: &mut termion::raw::RawTerminal<std::io::Stdout>,
+    conf: &mut Conf,
+) -> Result<()> {
+    let t = input.strip_prefix('\n').unwrap_or(input);
+    // get args
 
-    use super::*;
-    #[test]
-    fn test_parse_error() {
-        let stdin = b"Test";
-        let result = sheller(&mut stdin.as_ref());
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "Error with Parser: invalid digit found in string"
-        );
+    let args: Vec<&str> = t.split_whitespace().collect();
+
+    let arguments = args.iter().skip(1);
+    if args.is_empty() {
+        return Ok(());
     }
-    #[test]
-    // test the serialize to a test.toml file
-    fn test_serialize() -> Result<()> {
-        let stdin = b"Test123";
-        let result = sheller(&mut stdin.as_ref());
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        let serialized = toml::to_string(&err).context(SerializeError)?;
-        //print to file
-        let mut file = std::fs::File::create("test.toml").context(File)?;
-        file.write_all(serialized.as_bytes()).context(File)?;
-        Ok(())
+    let cmd = args[0].to_owned();
+    println!("\r");
+    match cmd.as_str() {
+        "cd" => {
+            out.suspend_raw_mode().map_err(Error::Term)?;
+            if arguments.clone().count() == 0 {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());
+                std::env::set_current_dir(home).map_err(Error::Cd)?;
+            } else if let Err(e) = std::env::set_current_dir(args[1]).map_err(Error::Cd) {
+                eprintln!("{}", toml::to_string(&e).map_err(Error::Parse)?)
+            }
+            shell_return();
+            return Ok(());
+        }
+        "add_to_env" => {
+            if arguments.clone().count() < 2 {
+                eprintln!("Invalid Number of Args");
+            } else {
+                conf.add_env_var((args[1].to_string(), args[2].to_string()))?;
+                conf.save_conf().unwrap();
+                shell_return();
+                return Ok(());
+            }
+        }
+        _ => {}
+    };
+    if args.len() == 1 {
+        out.suspend_raw_mode().map_err(Error::Term)?;
+        let mut output = Command::new(cmd);
+        if let Ok(process) = output.spawn() {
+            let pid = process.id().unwrap();
+            let pid = Pid::from_raw(pid.try_into().unwrap());
+            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        } else {
+            let cmd_str = format!("Command Not Found {}", args[0]);
+
+            eprint!(
+                "{}",
+                toml! {
+                    [Error]
+                    Source = cmd_str
+                }
+            );
+            shell_return();
+            return Ok(());
+        }
+    } else {
+        out.suspend_raw_mode().map_err(Error::Inout)?;
+        let mut output = Command::new(cmd);
+        output.args(arguments);
+        let pid = output.spawn().unwrap().id().unwrap();
+        let pid = Pid::from_raw(pid.try_into().unwrap());
+        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        //TODO: Implement fg for returning these processes
     }
-    // test serialize to a test.toml file, but fail and serialize the error to test.toml
-    #[test]
-    fn test_serialize_fail() -> Result<()> {
-        let stdin = b"Test123";
-        let result = sheller(&mut stdin.as_ref());
-        assert!(result.is_err());
-        let err = result.unwrap_err();
-        let serialized = toml::to_string(&err).context(SerializeError)?;
-        //print to file
-        let mut file_err = OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open("test.toml")
-            .context(File)
-            .unwrap_err();
-        let mut file = std::fs::File::create("test.toml").context(File)?;
-        file.write_all(
-            toml::to_string(&file_err)
-                .context(SerializeError)?
-                .as_bytes(),
-        )
-        .context(File)?;
-        Ok(())
-    }
+
+    shell_return();
+    Ok(())
+}
+
+fn tab_completion() {
+    print!("TAB COMPLETION");
+    shell_return();
+}
+
+fn shell_return() {
+    print!("\r\n{}⡢ {}", style::Bold, style::Reset);
+}
+fn save_history(history: Vec<String>) -> Result<()> {
+    let fd = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(dirs::home_dir().unwrap().join("history.tosh"))
+        .map_err(Error::File)?;
+    let mut f = std::io::BufWriter::new(fd);
+    writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
+    Ok(())
+}
+fn populate_history(history: &mut Vec<String>) -> Result<()> {
+    use std::io::BufRead;
+    let fd = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(dirs::home_dir().unwrap().join("history.tosh"))
+        .map_err(Error::File)?;
+
+    let f = std::io::BufReader::new(fd);
+    f.lines().for_each(|l| history.push(l.unwrap()));
+    Ok(())
 }

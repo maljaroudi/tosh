@@ -5,7 +5,7 @@ enum Token {
     Pipe,
 
     // Or regular expressions.
-    #[regex(r"\([^)]*\)")]
+    #[regex(r"\$*\([^)]*\)")]
     Parens,
     #[regex("[a-zA-Z]+")]
     Text,
@@ -24,8 +24,11 @@ mod tests {
 
     #[test]
     fn lex_pipe_test() {
-        let mut lex = Token::lexer("(ridiculouslyfastLexers)");
+        let mut lex = Token::lexer("$(ridiculouslyfastLexers) Hello");
         assert_eq!(lex.next(), Some(Token::Parens));
-        assert_eq!("(ridiculouslyfastLexers)", lex.slice())
+        assert_eq!("$(ridiculouslyfastLexers)", lex.slice());
+        assert_eq!(lex.next(),Some(Token::Text));
+        
     }
+
 }

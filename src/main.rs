@@ -127,7 +127,10 @@ async fn main() -> Result<()> {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
                     let term_size = termion::terminal_size().map_err(Error::Term)?;
-                    if term_curse_pos.1 == term_size.1 {
+                    if cmd.len() % term_size.0 as usize != term_size.0 as usize
+                        && term_curse_pos.1 as usize + cmd.len() / (term_size.0 as usize)
+                            == term_size.1 as usize
+                    {
                         print!("\x1b[1S");
                         print!("{}", termion::cursor::Up(1));
                     }
@@ -139,7 +142,7 @@ async fn main() -> Result<()> {
                         print!("{}", termion::cursor::Restore);
                         if term_curse_pos.0 == term_size.0 {
                             print!("{}", termion::cursor::Down(1));
-                            print!("{}", termion::cursor::Left(term_size.0));
+                            print!("\r");
                         } else {
                             print!("{}", termion::cursor::Right(1));
                         }
@@ -147,8 +150,6 @@ async fn main() -> Result<()> {
                         cmd.push(*k);
                         write!(stdout, "{}", k).map_err(Error::Inout)?;
                     }
-                    //print!("{}", cursor::Right(1));
-                    //print!("{}", *k);
                 }
             }
             Key::BackTab => tab_completion(),

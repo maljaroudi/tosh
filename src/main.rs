@@ -124,12 +124,25 @@ async fn main() -> Result<()> {
                     history_index = 0;
                     let cur_pos = curse.position() as usize;
                     let cmd = curse.get_mut();
-                    if cur_pos.saturating_sub(1) < cmd.len() && !cmd.is_empty() {
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
+                    if term_curse_pos.1 == term_size.1 {
+                        print!("\x1b[1S");
+                        print!("{}", termion::cursor::Up(1));
+                    }
+                    if cur_pos < cmd.len() && !cmd.is_empty() {
                         cmd.insert(cur_pos - 1, *k);
+
                         print!("{}", termion::cursor::Save);
                         write!(stdout, "{}", &cmd[cur_pos - 1..]).map_err(Error::Inout)?;
                         print!("{}", termion::cursor::Restore);
-                        print!("{}", termion::cursor::Right(1));
+                        if term_curse_pos.0 == term_size.0 {
+                            print!("{}", termion::cursor::Down(1));
+                            print!("{}", termion::cursor::Left(term_size.0));
+                        } else {
+                            print!("{}", termion::cursor::Right(1));
+                        }
                     } else {
                         cmd.push(*k);
                         write!(stdout, "{}", k).map_err(Error::Inout)?;
@@ -143,6 +156,7 @@ async fn main() -> Result<()> {
                 history_index = history.len();
                 let current_letter = curse.position();
                 let cmd = curse.get_mut();
+
                 if current_letter != 0 {
                     //last_space = cmd.rfind(' ').unwrap_or(0);
                     if current_letter as usize == cmd.len() {
@@ -153,8 +167,16 @@ async fn main() -> Result<()> {
                         //last_space = 0;
                         //print!("\n\rDEBUG: {cmd}");
                     }
+                    let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
+                        .map_err(Error::Term)?;
+                    let term_size = termion::terminal_size().map_err(Error::Term)?;
 
-                    print!("\u{0008}");
+                    if term_curse_pos.0 == 1 {
+                        print!("{}", termion::cursor::Up(1));
+                        print!("{}", termion::cursor::Right(term_size.0));
+                    } else {
+                        print!("\u{0008}");
+                    }
                     print!("{}", termion::cursor::Save);
 
                     print!("{}", termion::clear::AfterCursor);

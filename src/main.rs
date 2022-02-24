@@ -127,10 +127,7 @@ async fn main() -> Result<()> {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
                     let term_size = termion::terminal_size().map_err(Error::Term)?;
-                    if cmd.len() % term_size.0 as usize != term_size.0 as usize
-                        && term_curse_pos.1 as usize + cmd.len() / (term_size.0 as usize)
-                            == term_size.1 as usize
-                    {
+                    if (cmd.len() + 2) % (term_size.0 as usize) == 0 {
                         print!("\x1b[1S");
                         print!("{}", termion::cursor::Up(1));
                     }

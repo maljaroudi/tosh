@@ -17,9 +17,11 @@ use std::sync::Arc;
 use termion::event::Key;
 use termion::input::TermRead;
 use termion::raw::IntoRawMode;
+use termion::screen::ToMainScreen;
 use termion::style;
 use tokio::process::Command;
 use toml::toml;
+const PROMPT_LENGTH: usize = 2;
 struct CleanUp;
 impl Drop for CleanUp {
     fn drop(&mut self) {
@@ -31,6 +33,20 @@ type Result<T> = std::result::Result<T, error::Error>;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    std::panic::set_hook(Box::new(move |x| {
+        std::io::stdout()
+            .into_raw_mode()
+            .unwrap()
+            .suspend_raw_mode()
+            .unwrap();
+        write!(
+            std::io::stdout().into_raw_mode().unwrap(),
+            "{}",
+            ToMainScreen
+        )
+        .unwrap();
+        write!(std::io::stdout(), "{:?}", x).unwrap();
+    }));
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
         .map_err(Error::Signal)?;
@@ -50,7 +66,8 @@ async fn main() -> Result<()> {
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
     shell_return();
     stdout.flush().map_err(Error::Inout)?;
-
+    let mut start =
+        termion::cursor::DetectCursorPos::cursor_pos(&mut stdout).map_err(Error::Term)?;
     for c in stdin.keys() {
         match c.as_ref().expect("ERROR FETCHING") {
             Key::Ctrl('q') => {
@@ -116,6 +133,7 @@ async fn main() -> Result<()> {
                     curse.set_position(0);
                     curse = Cursor::new(String::new());
                     history_index = history.len();
+
                     //
                 } else if *k == '\t' {
                     history_index = 0;
@@ -127,7 +145,11 @@ async fn main() -> Result<()> {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
                     let term_size = termion::terminal_size().map_err(Error::Term)?;
-                    if (cmd.len() + 2) % (term_size.0 as usize) == 0 {
+                    if (cmd.len() + PROMPT_LENGTH) % (term_size.0 as usize) == 0
+                        && (start.1 as usize + ((cmd.len() + 2) / (term_size.0 as usize)) - 1
+                            == term_size.1 as usize
+                            || start.1 == term_size.1)
+                    {
                         print!("\x1b[1S");
                         print!("{}", termion::cursor::Up(1));
                     }
@@ -265,7 +287,10 @@ async fn main() -> Result<()> {
         }
         stdout.activate_raw_mode().map_err(Error::Term)?;
         stdout.flush().map_err(Error::Inout)?;
-
+        if curse.get_ref().len() == 0 {
+            start =
+                termion::cursor::DetectCursorPos::cursor_pos(&mut stdout).map_err(Error::Term)?;
+        }
         //}
     }
     save_history(history)?;

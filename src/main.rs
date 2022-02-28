@@ -7,6 +7,7 @@ use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
+use std::fs;
 use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -22,6 +23,8 @@ use termion::style;
 use tokio::process::Command;
 use toml::toml;
 const PROMPT_LENGTH: usize = 2;
+use rs_complete::CompletionTree;
+
 struct CleanUp;
 impl Drop for CleanUp {
     fn drop(&mut self) {
@@ -137,7 +140,7 @@ async fn main() -> Result<()> {
                     //
                 } else if *k == '\t' {
                     history_index = 0;
-                    tab_completion()
+                    tab_completion(curse.get_ref())?;
                 } else {
                     history_index = 0;
                     let cur_pos = curse.position() as usize;
@@ -171,7 +174,6 @@ async fn main() -> Result<()> {
                     }
                 }
             }
-            Key::BackTab => tab_completion(),
             Key::Backspace => {
                 history_index = history.len();
                 let current_letter = curse.position();
@@ -372,9 +374,23 @@ async fn process_command(
     Ok(())
 }
 
-fn tab_completion() {
-    print!("TAB COMPLETION");
-    shell_return();
+fn tab_completion(cmd: &str) -> Result<()> {
+    let mut completions = CompletionTree::default();
+    //TODO
+    let key = "PATH";
+    match std::env::var_os(key) {
+        Some(paths) => {
+            for path in std::env::split_paths(&paths) {
+                fs::read_dir(path)
+                    .map_err(Error::File)?
+                    .for_each(|x| completions.insert(&x.unwrap().file_name().to_string_lossy()));
+            }
+        }
+        None => return Ok(()),
+    }
+    let ret = toml::to_string(&completions.complete(cmd)).map_err(Error::Parse)?;
+    print!("{ret}");
+    Ok(())
 }
 
 fn shell_return() {

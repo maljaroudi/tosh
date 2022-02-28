@@ -7,7 +7,6 @@ use crossterm::terminal;
 use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
-use std::fs;
 use std::fs::OpenOptions;
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -388,9 +387,12 @@ fn tab_completion(cmd: &mut Cursor<&mut String>) -> Result<()> {
     match std::env::var_os(key) {
         Some(paths) => {
             for path in std::env::split_paths(&paths) {
-                fs::read_dir(path)
-                    .map_err(Error::File)?
-                    .for_each(|x| completions.insert(&x.unwrap().file_name().to_string_lossy()));
+                if let Ok(t) = path.read_dir() {
+                    t.for_each(|x| {
+                        completions.insert(&x.unwrap().file_name().into_string().unwrap())
+                    });
+                }
+                //println!("{path:?}");
             }
         }
         None => return Ok(()),

@@ -121,6 +121,7 @@ async fn main() -> Result<()> {
 
                 if *k == '\n' {
                     // handle exit only, i don't like how it's handled now
+                    curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
 
                     let string = curse.get_ref();
                     //stdout.suspend_raw_mode()?;
@@ -289,6 +290,7 @@ async fn main() -> Result<()> {
                 history_index = history.len();
                 let inn = curse.get_mut();
                 **inn = String::new();
+                curse.set_position(0);
                 shell_return();
             }
         }

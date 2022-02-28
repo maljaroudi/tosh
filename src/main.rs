@@ -64,7 +64,8 @@ async fn main() -> Result<()> {
     println!("{}", history.len());
     let mut history_index = history.len();
     let stdin = stdin();
-    let mut curse: Cursor<String> = Cursor::new(String::new());
+    let mut inn = String::new();
+    let mut curse: Cursor<&mut String> = Cursor::new(&mut inn);
 
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
     shell_return();
@@ -118,7 +119,6 @@ async fn main() -> Result<()> {
             Key::Char(k) => {
                 // reset history cursor to the end of the history
 
-                curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
                 if *k == '\n' {
                     // handle exit only, i don't like how it's handled now
 
@@ -127,21 +127,23 @@ async fn main() -> Result<()> {
                     if string.is_empty() {
                         continue;
                     }
-                    history.push(string.to_owned());
+                    history.push(string.to_string());
                     if string.trim() == "exit" {
                         print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                         break;
                     }
                     process_command(string, &mut stdout, &mut config).await?;
                     curse.set_position(0);
-                    curse = Cursor::new(String::new());
+                    let inn = curse.get_mut();
+                    **inn = String::new();
                     history_index = history.len();
 
                     //
                 } else if *k == '\t' {
                     history_index = 0;
-                    tab_completion(curse.get_ref())?;
+                    tab_completion(&mut curse)?;
                 } else {
+                    curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
                     history_index = 0;
                     let cur_pos = curse.position() as usize;
                     let cmd = curse.get_mut();
@@ -212,12 +214,14 @@ async fn main() -> Result<()> {
             Key::Ctrl('u') => {
                 history_index = history.len();
                 print!("{}", termion::clear::CurrentLine);
-                curse = Cursor::new(String::new());
+                let inn = curse.get_mut();
+                **inn = String::new();
                 print!("\r> ");
             }
+
             Key::Left => {
                 history_index = history.len();
-                if curse.position() != 0 {
+                if curse.position() != 0 && !curse.get_ref().is_empty() {
                     let term_curse_pos = termion::cursor::DetectCursorPos::cursor_pos(&mut stdout)
                         .map_err(Error::Term)?;
                     let term_size = termion::terminal_size().map_err(Error::Term)?;
@@ -283,7 +287,8 @@ async fn main() -> Result<()> {
             }
             _ => {
                 history_index = history.len();
-                curse = Cursor::new(String::new());
+                let inn = curse.get_mut();
+                **inn = String::new();
                 shell_return();
             }
         }
@@ -374,7 +379,7 @@ async fn process_command(
     Ok(())
 }
 
-fn tab_completion(cmd: &str) -> Result<()> {
+fn tab_completion(cmd: &mut Cursor<&mut String>) -> Result<()> {
     let mut completions = CompletionTree::default();
     //TODO
     let key = "PATH";
@@ -388,8 +393,21 @@ fn tab_completion(cmd: &str) -> Result<()> {
         }
         None => return Ok(()),
     }
-    let ret = toml::to_string(&completions.complete(cmd)).map_err(Error::Parse)?;
-    print!("{ret}");
+    if let Some(ret) = &completions.complete(cmd.get_mut()) {
+        if ret.len() == 1 {
+            let cmdd = cmd.get_mut();
+            if cmdd.trim() != ret[0].trim() {
+                let from = cmdd.len();
+                let to = ret[0].len();
+                **cmdd = ret[0].clone();
+                print!("{}", &cmdd[from..]);
+                cmd.seek(SeekFrom::Current((to - from) as i64))
+                    .map_err(Error::Term)?;
+            }
+        }
+    }
+    //let ret = toml::to_string().map_err(Error::Parse)?;
+    //print!("{ret}");
     Ok(())
 }
 

@@ -48,7 +48,7 @@ async fn main() -> Result<()> {
             ToMainScreen
         )
         .unwrap();
-        write!(std::io::stdout(), "{:?}", x).unwrap();
+        print!("{x:?}");
     }));
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
@@ -294,7 +294,7 @@ async fn main() -> Result<()> {
         }
         stdout.activate_raw_mode().map_err(Error::Term)?;
         stdout.flush().map_err(Error::Inout)?;
-        if curse.get_ref().len() == 0 {
+        if curse.get_ref().is_empty() {
             start =
                 termion::cursor::DetectCursorPos::cursor_pos(&mut stdout).map_err(Error::Term)?;
         }

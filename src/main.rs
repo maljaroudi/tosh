@@ -121,7 +121,7 @@ async fn main() -> Result<()> {
                                 cmd.pop();
                                 //println!("\n\rDEBUG: {cmd}");
                             } else {
-                                cmd.remove(current_letter as usize);
+                                cmd.remove(current_letter as usize-1);
                                 //last_space = 0;
                                 //print!("\n\rDEBUG: {cmd}");
                             }

@@ -370,9 +370,23 @@ async fn process_command(
         out.suspend_raw_mode().map_err(Error::Inout)?;
         let mut output = Command::new(cmd);
         output.args(arguments);
-        let pid = output.spawn().unwrap().id().unwrap();
-        let pid = Pid::from_raw(pid.try_into().unwrap());
-        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        if let Ok(process) = output.spawn() {
+            let pid = process.id().unwrap();
+            let pid = Pid::from_raw(pid.try_into().unwrap());
+            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        } else {
+            let cmd_str = format!("Command Not Found {}", args[0]);
+
+            eprint!(
+                "{}",
+                toml! {
+                    [Error]
+                    Source = cmd_str
+                }
+            );
+            shell_return();
+            return Ok(());
+        }
         //TODO: Implement fg for returning these processes
     }
 

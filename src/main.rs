@@ -13,6 +13,7 @@ use error::Error;
 use nix::sys::wait::*;
 use nix::unistd::Pid;
 use std::fs::OpenOptions;
+const PROMPT_LENGTH: usize = 2;
 
 use std::io::Seek;
 use std::io::SeekFrom;
@@ -52,6 +53,7 @@ async fn main() -> Result<()> {
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
     shell_return();
     stdout().flush().map_err(Error::Inout)?;
+    let mut start = crossterm::cursor::position().map_err(Error::Term)?;
     loop {
         execute!(stdout(), crossterm::terminal::EnableLineWrap).map_err(Error::Term)?;
         terminal::enable_raw_mode().map_err(Error::Term)?;
@@ -121,7 +123,7 @@ async fn main() -> Result<()> {
                                 cmd.pop();
                                 //println!("\n\rDEBUG: {cmd}");
                             } else {
-                                cmd.remove(current_letter as usize-1);
+                                cmd.remove(current_letter as usize - 1);
                                 //last_space = 0;
                                 //print!("\n\rDEBUG: {cmd}");
                             }
@@ -185,42 +187,36 @@ async fn main() -> Result<()> {
                         // reset history cursor to the end of the history
 
                         curse.seek(SeekFrom::Current(1)).map_err(Error::Term)?;
-                        if k == '\t' {
-                            history_index = 0;
-                            tab_completion()
-                        } else {
-                            history_index = 0;
-                            let cur_pos = curse.position() as usize;
-                            let cmd = curse.get_mut();
-                            let term_curse_pos =
-                                crossterm::cursor::position().map_err(Error::Term)?;
-                            let term_size = crossterm::terminal::size().map_err(Error::Term)?;
 
-                            if cur_pos < cmd.len() && !cmd.is_empty() {
-                                if (cmd.len() % term_size.0 as usize) < term_size.0 as usize
-                                    && term_curse_pos.1 as usize
-                                        + (cmd.len() + 2) / (term_size.0 as usize)
-                                        == term_size.1 as usize
-                                {
-                                    print!("\x1b[1S");
-                                    print!("{}", crossterm::cursor::MoveUp(1));
-                                }
-                                cmd.insert(cur_pos - 1, k);
+                        history_index = 0;
+                        let cur_pos = curse.position() as usize;
+                        let cmd = curse.get_mut();
+                        let term_curse_pos = crossterm::cursor::position().map_err(Error::Term)?;
+                        let term_size = crossterm::terminal::size().map_err(Error::Term)?;
 
-                                print!("{}", crossterm::cursor::SavePosition);
-                                write!(stdout(), "{}", &cmd[cur_pos - 1..])
-                                    .map_err(Error::Inout)?;
-                                print!("{}", crossterm::cursor::RestorePosition);
-                                if term_curse_pos.0 == term_size.0 - 1 {
-                                    //execute!(stdout(), crossterm::cursor::MoveDown(1));
-                                    print!("\r\n");
-                                } else {
-                                    print!("{}", crossterm::cursor::MoveRight(1));
-                                }
+                        if (cmd.len() + PROMPT_LENGTH) % (term_size.0 as usize) == 0
+                            && (start.1 as usize + ((cmd.len() + 2) / (term_size.0 as usize))
+                                == term_size.1 as usize
+                                || start.1 == term_size.1)
+                        {
+                            print!("\x1b[1S");
+                            print!("{}", crossterm::cursor::MoveUp(1));
+                        }
+                        if cur_pos < cmd.len() && !cmd.is_empty() {
+                            cmd.insert(cur_pos - 1, k);
+
+                            print!("{}", crossterm::cursor::SavePosition);
+                            print!("{}", &cmd[cur_pos - 1..]);
+                            print!("{}", crossterm::cursor::RestorePosition);
+                            if term_curse_pos.0 == term_size.0 - 1 {
+                                print!("{}", crossterm::cursor::MoveDown(1));
+                                print!("\r");
                             } else {
-                                cmd.push(k);
-                                write!(stdout(), "{}", k).map_err(Error::Inout)?;
+                                print!("{}", crossterm::cursor::MoveRight(1));
                             }
+                        } else {
+                            cmd.push(k);
+                            print!("{k}")
                         }
                     }
 
@@ -233,7 +229,7 @@ async fn main() -> Result<()> {
                             let term_curse_pos =
                                 crossterm::cursor::position().map_err(Error::Term)?;
                             let term_size = crossterm::terminal::size().map_err(Error::Term)?;
-                            if term_curse_pos.0 == 1 {
+                            if term_curse_pos.0 == 0 {
                                 print!("{}", crossterm::cursor::MoveUp(1));
                                 print!("{}", crossterm::cursor::MoveRight(term_size.0));
                             } else {
@@ -254,7 +250,7 @@ async fn main() -> Result<()> {
                                 crossterm::cursor::position().map_err(Error::Term)?;
 
                             let term_size = crossterm::terminal::size().map_err(Error::Term)?;
-                            if term_curse_pos.0 == term_size.0 {
+                            if term_curse_pos.0 == term_size.0 - 1 {
                                 print!("{}", crossterm::cursor::MoveDown(1));
                                 print!("{}", crossterm::cursor::MoveLeft(term_size.0));
                             } else {
@@ -312,11 +308,21 @@ async fn main() -> Result<()> {
                             }
                         }
                     }
+                    KeyEvent {
+                        code: KeyCode::Tab,
+                        modifiers: event::KeyModifiers::NONE,
+                    } => {
+                        history_index = 0;
+                        tab_completion(&mut curse)?;
+                    }
                     _ => {
                         history_index = history.len();
                         curse = Cursor::new(String::new());
                         shell_return();
                     }
+                }
+                if curse.get_ref().is_empty() {
+                    start = crossterm::cursor::position().map_err(Error::Term)?;
                 }
                 //terminal::disable_raw_mode().map_err(Error::Term)?;
                 stdout().flush().map_err(Error::Inout)?;
@@ -400,9 +406,39 @@ async fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
     Ok(())
 }
 
-fn tab_completion() {
-    print!("TAB COMPLETION");
-    shell_return();
+fn tab_completion(cmd: &mut Cursor<String>) -> Result<()> {
+    let mut completions = rs_complete::CompletionTree::default();
+    //TODO
+    let key = "PATH";
+    match std::env::var_os(key) {
+        Some(paths) => {
+            for path in std::env::split_paths(&paths) {
+                if let Ok(t) = path.read_dir() {
+                    t.for_each(|x| {
+                        completions.insert(&x.unwrap().file_name().into_string().unwrap())
+                    });
+                }
+                //println!("{path:?}");
+            }
+        }
+        None => return Ok(()),
+    }
+    if let Some(ret) = &completions.complete(cmd.get_mut()) {
+        if ret.len() == 1 {
+            let cmdd = cmd.get_mut();
+            if cmdd.trim() != ret[0].trim() {
+                let from = cmdd.len();
+                let to = ret[0].len();
+                *cmdd = ret[0].clone();
+                print!("{}", &cmdd[from..]);
+                cmd.seek(SeekFrom::Current((to - from) as i64))
+                    .map_err(Error::Term)?;
+            }
+        }
+    }
+    //let ret = toml::to_string().map_err(Error::Parse)?;
+    //print!("{ret}");
+    Ok(())
 }
 
 fn shell_return() {

@@ -73,19 +73,17 @@ async fn main() -> Result<()> {
                         // Note: If we only have one word, remove everything.
                         let current_letter = curse.position();
                         let cmd = curse.get_mut();
-                        let mut last_space = cmd.rfind(' ').unwrap_or(0);
+                        let last_space = cmd[..current_letter as usize].rfind(' ').unwrap_or(0);
                         if !cmd.is_empty() {
                             if current_letter as usize == cmd.len() {
                                 cmd.truncate(last_space);
                             } else {
-                                cmd.replace_range(
-                                    current_letter as usize - last_space..current_letter as usize,
-                                    "",
-                                );
-                                last_space = 0;
+                                cmd.replace_range(last_space..current_letter as usize, "");
+                                //print!("{last_space}")
+                                //last_space = 0;
                                 //println!("\n\rDEBUG: {cmd}");
                             }
-                            for _ in 0..current_letter as usize - last_space {
+                            for _ in last_space..(current_letter as usize) {
                                 print!("\u{0008}");
                             }
                             print!("{}", crossterm::cursor::SavePosition);

@@ -1,5 +1,10 @@
 // TODO: The entire program needs to be rewritten.
 // We should only take stdin but do everything on the cursor instead
+use std::alloc::System;
+
+#[global_allocator]
+static A: System = System;
+
 mod config;
 mod error;
 use config::Conf;
@@ -7,10 +12,12 @@ use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-use crossterm::terminal::*;
+
+use crossterm::terminal::ClearType;
 use crossterm::{execute, terminal};
 use error::Error;
-use nix::sys::wait::*;
+use nix::sys::wait::waitpid;
+use nix::sys::wait::WaitPidFlag;
 use nix::unistd::Pid;
 use std::fs::OpenOptions;
 const PROMPT_LENGTH: usize = 2;
@@ -19,23 +26,14 @@ use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::io::{stdout, Cursor};
+use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::process::Command;
 use toml::toml;
-struct CleanUp;
-impl Drop for CleanUp {
-    fn drop(&mut self) {
-        terminal::disable_raw_mode().expect("Unable to disable raw mode")
-    }
-}
 
 type Result<T> = std::result::Result<T, error::Error>;
-
-#[tokio::main]
-async fn main() -> Result<()> {
-    let _cleaner = CleanUp;
+fn main() -> Result<()> {
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
         .map_err(Error::Signal)?;
@@ -164,7 +162,7 @@ async fn main() -> Result<()> {
                         modifiers: event::KeyModifiers::NONE,
                     } => {
                         let string = curse.get_ref();
-                        //stdout.suspend_raw_mode()?;
+                        crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
                         if string.is_empty() {
                             continue;
                         }
@@ -173,7 +171,8 @@ async fn main() -> Result<()> {
                             print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                             break;
                         }
-                        process_command(string, &mut config).await?;
+                        process_command(string, &mut config)?;
+                        crossterm::terminal::enable_raw_mode().map_err(Error::Term)?;
                         curse.set_position(0);
                         curse = Cursor::new(String::new());
                         history_index = history.len();
@@ -331,10 +330,11 @@ async fn main() -> Result<()> {
     }
     save_history(history)?;
     config.save_conf()?;
+    terminal::disable_raw_mode().map_err(Error::Term)?;
     Ok(())
 }
 
-async fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
+fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
     let t = input.strip_prefix('\n').unwrap_or(input);
     // get args
 
@@ -374,7 +374,7 @@ async fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
         let mut output = Command::new(cmd);
         if let Ok(process) = output.spawn() {
-            let pid = process.id().unwrap();
+            let pid = process.id();
             let pid = Pid::from_raw(pid.try_into().unwrap());
             waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
         } else {
@@ -394,9 +394,23 @@ async fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
         let mut output = Command::new(cmd);
         output.args(arguments);
-        let pid = output.spawn().unwrap().id().unwrap();
-        let pid = Pid::from_raw(pid.try_into().unwrap());
-        waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        if let Ok(process) = output.spawn() {
+            let pid = process.id();
+            let pid = Pid::from_raw(pid.try_into().unwrap());
+            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+        } else {
+            let cmd_str = format!("Command Not Found {}", args[0]);
+
+            eprint!(
+                "{}",
+                toml! {
+                    [Error]
+                    Source = cmd_str
+                }
+            );
+            shell_return();
+            return Ok(());
+        }
         //TODO: Implement fg for returning these processes
     }
 

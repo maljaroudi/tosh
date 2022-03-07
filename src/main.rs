@@ -155,7 +155,7 @@ fn main() -> Result<()> {
                         execute!(stdout(), crossterm::terminal::Clear(ClearType::CurrentLine))
                             .map_err(Error::Term)?;
                         curse = Cursor::new(String::new());
-                        print!("\r> ");
+			shell_no_return();
                     }
                     KeyEvent {
                         code: KeyCode::Enter,
@@ -166,7 +166,11 @@ fn main() -> Result<()> {
                         if string.is_empty() {
                             continue;
                         }
-                        history.push(string.to_owned());
+                        if let Some(t) = history.last() {
+                            if t != string {
+                                history.push(string.to_owned());
+                            }
+                        }
                         if string.trim() == "exit" {
                             print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                             break;
@@ -448,14 +452,17 @@ fn tab_completion(cmd: &mut Cursor<String>) -> Result<()> {
             }
         }
     }
-    //let ret = toml::to_string().map_err(Error::Parse)?;
-    //print!("{ret}");
     Ok(())
 }
 
 fn shell_return() {
     print!("\r\n⡢ ");
 }
+
+fn shell_no_return() {
+    print!("\r⡢ ");
+}
+
 fn save_history(history: Vec<String>) -> Result<()> {
     let fd = OpenOptions::new()
         .write(true)
@@ -479,3 +486,4 @@ fn populate_history(history: &mut Vec<String>) -> Result<()> {
     f.lines().for_each(|l| history.push(l.unwrap()));
     Ok(())
 }
+

@@ -183,7 +183,7 @@ fn main() -> Result<()> {
                     }
                     KeyEvent {
                         code: KeyCode::Char(k),
-                        modifiers: event::KeyModifiers::NONE,
+                        modifiers: event::KeyModifiers::NONE | event::KeyModifiers::SHIFT,
                     } => {
                         // reset history cursor to the end of the history
 

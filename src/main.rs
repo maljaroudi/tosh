@@ -423,29 +423,27 @@ fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
 }
 
 fn tab_completion(cmd: &mut Cursor<String>) -> Result<()> {
-    let mut completions = rs_complete::CompletionTree::default();
-    //TODO
+    use tosh::trie::Trie;
+    let mut obj = Trie::default();
     let key = "PATH";
     match std::env::var_os(key) {
         Some(paths) => {
             for path in std::env::split_paths(&paths) {
                 if let Ok(t) = path.read_dir() {
-                    t.for_each(|x| {
-                        completions.insert(&x.unwrap().file_name().into_string().unwrap())
-                    });
+                    t.for_each(|x| obj.insert(x.unwrap().file_name().into_string().unwrap()));
                 }
                 //println!("{path:?}");
             }
         }
         None => return Ok(()),
     }
-    if let Some(ret) = &completions.complete(cmd.get_mut()) {
-        if ret.len() == 1 {
+    if let Some(matches) = obj.root.collect_all_matches(cmd.get_ref()) {
+        if !matches.is_empty() && matches.len() == 1 && matches[0].len() > cmd.get_ref().len() {
             let cmdd = cmd.get_mut();
-            if cmdd.trim() != ret[0].trim() {
+            if cmdd.trim() != matches[0].trim() {
                 let from = cmdd.len();
-                let to = ret[0].len();
-                *cmdd = ret[0].clone();
+                let to = matches[0].len();
+                *cmdd = matches[0].to_string();
                 print!("{}", &cmdd[from..]);
                 cmd.seek(SeekFrom::Current((to - from) as i64))
                     .map_err(Error::Term)?;
@@ -467,7 +465,7 @@ fn save_history(history: Vec<String>) -> Result<()> {
     let fd = OpenOptions::new()
         .write(true)
         .create(true)
-        .open(dirs::home_dir().unwrap().join("history.tosh"))
+        .open(dirs_next::home_dir().unwrap().join("history.tosh"))
         .map_err(Error::File)?;
     let mut f = std::io::BufWriter::new(fd);
     writeln!(f, "{}", history.join("\n")).map_err(Error::File)?;
@@ -479,7 +477,7 @@ fn populate_history(history: &mut Vec<String>) -> Result<()> {
         .read(true)
         .write(true)
         .create(true)
-        .open(dirs::home_dir().unwrap().join("history.tosh"))
+        .open(dirs_next::home_dir().unwrap().join("history.tosh"))
         .map_err(Error::File)?;
 
     let f = std::io::BufReader::new(fd);

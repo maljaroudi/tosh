@@ -37,7 +37,7 @@ impl Conf {
         let fd = OpenOptions::new()
             .write(true)
             .create(true)
-            .open(dirs::home_dir().unwrap().join("tosh_config.toml"))
+            .open(dirs_next::home_dir().unwrap().join("tosh_config.toml"))
             .map_err(Error::File)?;
         let mut f = std::io::BufWriter::new(fd);
         let tt = toml::to_string(&self).map_err(Error::Parse)?;
@@ -59,7 +59,7 @@ impl Conf {
             .read(true)
             .write(true)
             .create(true)
-            .open(dirs::home_dir().unwrap().join("tosh_config.toml"))
+            .open(dirs_next::home_dir().unwrap().join("tosh_config.toml"))
             .map_err(Error::File)?;
         let mut t = std::io::BufReader::new(fd);
         let mut conf_str = String::new();

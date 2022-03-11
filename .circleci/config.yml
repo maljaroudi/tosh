@@ -18,6 +18,8 @@ jobs:
     steps:
       - checkout
       - run: cargo t
+      - run: |
+          curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C ${CARGO_HOME:-~/.cargo}/bin
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows

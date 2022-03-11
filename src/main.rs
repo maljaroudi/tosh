@@ -155,7 +155,7 @@ fn main() -> Result<()> {
                         execute!(stdout(), crossterm::terminal::Clear(ClearType::CurrentLine))
                             .map_err(Error::Term)?;
                         curse = Cursor::new(String::new());
-			shell_no_return();
+                        shell_no_return();
                     }
                     KeyEvent {
                         code: KeyCode::Enter,
@@ -484,4 +484,3 @@ fn populate_history(history: &mut Vec<String>) -> Result<()> {
     f.lines().for_each(|l| history.push(l.unwrap()));
     Ok(())
 }
-

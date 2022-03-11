@@ -198,7 +198,7 @@ fn main() -> Result<()> {
                         if (cmd.len() + PROMPT_LENGTH) % (term_size.0 as usize) == 0
                             && (start.1 as usize + ((cmd.len() + 2) / (term_size.0 as usize))
                                 == term_size.1 as usize
-                                || start.1 == term_size.1)
+                                || start.1 == term_size.1 - 1)
                         {
                             print!("\x1b[1S");
                             print!("{}", crossterm::cursor::MoveUp(1));

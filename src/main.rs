@@ -403,13 +403,10 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Re
             let pid = Pid::from_raw(pid_u32.try_into().unwrap());
             if let Ok(x) = waitpid(pid, Some(WaitPidFlag::WUNTRACED)) {
                 match x {
-                    WaitStatus::Exited(_, _) => {}
-                    WaitStatus::Signaled(_, _, _) => {}
                     WaitStatus::Stopped(_, _) => {
                         fg_list.push(pid_u32 as usize);
                     }
-                    WaitStatus::Continued(_) => {}
-                    WaitStatus::StillAlive => {}
+                    _ => {}
                 }
             }
         } else {

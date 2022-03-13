@@ -4,7 +4,6 @@ use std::alloc::System;
 
 #[global_allocator]
 static A: System = System;
-
 mod config;
 mod error;
 use config::Conf;
@@ -12,12 +11,12 @@ use crossterm::event;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-
 use crossterm::terminal::ClearType;
 use crossterm::{execute, terminal};
 use error::Error;
 use nix::sys::wait::waitpid;
 use nix::sys::wait::WaitPidFlag;
+use nix::sys::wait::WaitStatus;
 use nix::unistd::Pid;
 use std::fs::OpenOptions;
 const PROMPT_LENGTH: usize = 2;
@@ -31,8 +30,9 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 use toml::toml;
-
+//use tosh_classifier::{classify, prime};
 type Result<T> = std::result::Result<T, error::Error>;
+
 fn main() -> Result<()> {
     let term = Arc::new(AtomicBool::new(false));
     signal_hook::flag::register(signal_hook::consts::SIGINT, Arc::clone(&term))
@@ -46,6 +46,7 @@ fn main() -> Result<()> {
     let mut history: Vec<String> = vec![];
     populate_history(&mut history)?;
     println!("{}", history.len());
+    let mut fg_list: Vec<usize> = Vec::with_capacity(32);
     let mut history_index = history.len();
     let mut curse: Cursor<String> = Cursor::new(String::new());
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
@@ -175,7 +176,7 @@ fn main() -> Result<()> {
                             print!("\n\rBye!!!!!!!!!!!!!!!!!!!\r");
                             break;
                         }
-                        process_command(string, &mut config)?;
+                        process_command(string, &mut config, &mut fg_list)?;
                         crossterm::terminal::enable_raw_mode().map_err(Error::Term)?;
                         curse.set_position(0);
                         curse = Cursor::new(String::new());
@@ -338,7 +339,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
+fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Result<()> {
     let t = input.strip_prefix('\n').unwrap_or(input);
     // get args
 
@@ -372,15 +373,45 @@ fn process_command(input: &str, conf: &mut Conf) -> Result<()> {
                 return Ok(());
             }
         }
+        "fg" => {
+            //crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
+            if let Some(fg_prg) = fg_list.pop() {
+                nix::sys::signal::kill(
+                    Pid::from_raw(fg_prg as i32),
+                    nix::sys::signal::Signal::SIGCONT,
+                )
+                .unwrap();
+                let pid = Pid::from_raw(fg_prg as i32);
+                //TODO: Fix this to be similar to the one before
+                waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+                shell_return();
+            } else {
+                println!("NO PID FOUND");
+                shell_return();
+            }
+            return Ok(());
+        }
+
         _ => {}
     };
     if args.len() == 1 {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
         let mut output = Command::new(cmd);
         if let Ok(process) = output.spawn() {
-            let pid = process.id();
-            let pid = Pid::from_raw(pid.try_into().unwrap());
-            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+            let pid_u32 = process.id();
+
+            let pid = Pid::from_raw(pid_u32.try_into().unwrap());
+            if let Ok(x) = waitpid(pid, Some(WaitPidFlag::WUNTRACED)) {
+                match x {
+                    WaitStatus::Exited(_, _) => {}
+                    WaitStatus::Signaled(_, _, _) => {}
+                    WaitStatus::Stopped(_, _) => {
+                        fg_list.push(pid_u32 as usize);
+                    }
+                    WaitStatus::Continued(_) => {}
+                    WaitStatus::StillAlive => {}
+                }
+            }
         } else {
             let cmd_str = format!("Command Not Found {}", args[0]);
 
@@ -483,4 +514,12 @@ fn populate_history(history: &mut Vec<String>) -> Result<()> {
     let f = std::io::BufReader::new(fd);
     f.lines().for_each(|l| history.push(l.unwrap()));
     Ok(())
+}
+
+fn process_output(out: String) {
+    todo!()
+}
+
+fn classifier_initialization() -> Result<()> {
+    todo!()
 }

@@ -1,6 +1,6 @@
 [package]
 name = "tosh"
-version = "0.1.0"
+version = "0.3.1"
 edition = "2021"
 
 
@@ -15,15 +15,13 @@ path = "src/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-crossterm = { version = "0.22.1" }
+crossterm = "0.23.0"
 dirs-next = "2.0.0"
 logos = "0.12.0"
 nix = "0.23.1"
-
 serde = { version = "1.0.136", features = ["derive"] }
 signal-hook = "0.3.13"
 toml = "0.5.8"
-
 [profile.release]
 opt-level = "z"
 lto = true

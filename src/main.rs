@@ -409,6 +409,8 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Re
                     _ => {}
                 }
             }
+            //TODO: Tomlize the ouput
+           // tomlize_stdout(&process.stdout);
         } else {
             let cmd_str = format!("Command Not Found {}", args[0]);
 

@@ -1,5 +1,6 @@
 mod lexer;
 pub mod trie;
+pub mod jsonify;
 #[cfg(test)]
 mod tests {
     use super::trie::Trie;

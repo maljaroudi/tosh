@@ -1,6 +1,7 @@
 // TODO: The entire program needs to be rewritten.
 // We should only take stdin but do everything on the cursor instead
 use std::alloc::System;
+use std::process::Child;
 
 #[global_allocator]
 static A: System = System;
@@ -46,7 +47,7 @@ fn main() -> Result<()> {
     let mut history: Vec<String> = vec![];
     populate_history(&mut history)?;
     println!("{}", history.len());
-    let mut fg_list: Vec<usize> = Vec::with_capacity(32);
+    let mut fg_list: Vec<Child> = Vec::with_capacity(32);
     let mut history_index = history.len();
     let mut curse: Cursor<String> = Cursor::new(String::new());
     let mut config = Conf::load_conf().unwrap_or_else(|_| Conf::default());
@@ -128,7 +129,7 @@ fn main() -> Result<()> {
                                 crossterm::cursor::position().map_err(Error::Term)?;
                             let term_size = crossterm::terminal::size().map_err(Error::Term)?;
 
-                            if term_curse_pos.0 == 1 {
+                            if term_curse_pos.0 == 0 {
                                 print!("{}", crossterm::cursor::MoveUp(1));
                                 print!("{}", crossterm::cursor::MoveRight(term_size.0));
                             } else {
@@ -138,7 +139,7 @@ fn main() -> Result<()> {
 
                             execute!(
                                 stdout(),
-                                crossterm::terminal::Clear(ClearType::UntilNewLine)
+                                crossterm::terminal::Clear(ClearType::FromCursorDown)
                             )
                             .map_err(Error::Term)?;
                             let rest = cmd[current_letter as usize - 1..].to_owned();
@@ -339,7 +340,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Result<()> {
+fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Result<()> {
     let t = input.strip_prefix('\n').unwrap_or(input);
     // get args
 
@@ -375,13 +376,13 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Re
         }
         "fg" => {
             //crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
-            if let Some(fg_prg) = fg_list.pop() {
+            if let Some(fg_prg) = dbg!(fg_list).pop() {
                 nix::sys::signal::kill(
-                    Pid::from_raw(fg_prg as i32),
+                    Pid::from_raw(fg_prg.id() as i32),
                     nix::sys::signal::Signal::SIGCONT,
                 )
                 .unwrap();
-                let pid = Pid::from_raw(fg_prg as i32);
+                let pid = Pid::from_raw(fg_prg.id() as i32);
                 //TODO: Fix this to be similar to the one before
                 waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
                 shell_return();
@@ -396,6 +397,7 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Re
     };
     if args.len() == 1 {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
+
         let mut output = Command::new(cmd);
         if let Ok(process) = output.spawn() {
             let pid_u32 = process.id();
@@ -403,8 +405,8 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<usize>) -> Re
             let pid = Pid::from_raw(pid_u32.try_into().unwrap());
             if let Ok(x) = waitpid(pid, Some(WaitPidFlag::WUNTRACED)) {
                 match x {
-                    WaitStatus::Stopped(_, _) => {
-                        fg_list.push(pid_u32 as usize);
+                    WaitStatus::Stopped(p, nix::sys::signal::Signal::SIGTSTP) => {
+                        fg_list.push(process);
                     }
                     _ => {}
                 }

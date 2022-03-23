@@ -197,15 +197,15 @@ fn main() -> Result<()> {
                         let term_curse_pos = crossterm::cursor::position().map_err(Error::Term)?;
                         let term_size = crossterm::terminal::size().map_err(Error::Term)?;
 
-                        if (cmd.len() + PROMPT_LENGTH) % (term_size.0 as usize) == 0
-                            && (start.1 as usize + ((cmd.len() + 2) / (term_size.0 as usize))
-                                == term_size.1 as usize
-                                || start.1 == term_size.1 - 1)
-                        {
-                            print!("\x1b[1S");
-                            print!("{}", crossterm::cursor::MoveUp(1));
-                        }
                         if cur_pos < cmd.len() && !cmd.is_empty() {
+                            if (cmd.len() + PROMPT_LENGTH) % (term_size.0 as usize) == 0
+                                && (start.1 as usize + ((cmd.len() + 2) / (term_size.0 as usize))
+                                    == term_size.1 as usize
+                                    || start.1 == term_size.1 - 1)
+                            {
+                                print!("\x1b[1S");
+                                print!("{}", crossterm::cursor::MoveUp(1));
+                            }
                             cmd.insert(cur_pos - 1, k);
 
                             print!("{}", crossterm::cursor::SavePosition);
@@ -219,7 +219,10 @@ fn main() -> Result<()> {
                             }
                         } else {
                             cmd.push(k);
-                            print!("{k}")
+                            print!("{k}");
+                            if term_curse_pos.0 + 1 == term_size.0 {
+                                print!("\n\r");
+                            }
                         }
                     }
 
@@ -412,7 +415,7 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
                 }
             }
             //TODO: Tomlize the ouput
-           // tomlize_stdout(&process.stdout);
+            // tomlize_stdout(&process.stdout);
         } else {
             let cmd_str = format!("Command Not Found {}", args[0]);
 

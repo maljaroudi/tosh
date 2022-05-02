@@ -401,7 +401,7 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
     if args.len() == 1 {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
         // Change to Error::Jc
-        let mut jc_output = Command::new("jc")
+        let jc_output = Command::new("jc")
             .arg("-r")
             .arg(&cmd)
             .stdin(Stdio::inherit())
@@ -447,6 +447,24 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
         }
     } else {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
+        let jc_output = Command::new("jc")
+            .arg("-r")
+            .arg(&cmd)
+            .args(arguments.clone())
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .output()
+            .map_err(Error::Term)?;
+        if let Some(jc_code) = jc_output.status.code() {
+            if jc_code < 100 {
+                let json_value = serde_json::from_slice::<toml::Value>(&jc_output.stdout).unwrap();
+
+                println!("{}", json_value);
+                shell_return();
+                return Ok(());
+            }
+        }
+
         let mut output = Command::new(cmd);
         output.args(arguments);
         if let Ok(process) = output.spawn() {

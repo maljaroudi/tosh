@@ -28,7 +28,7 @@ mod tests {
     use super::Token;
 
     #[test]
-    fn lex_pipe_test() {
+    fn lex_paren_test() {
         let mut lex = Token::lexer("Hello $(HELLO)");
         assert_eq!(lex.next(), Some(Token::Text));
 
@@ -36,6 +36,14 @@ mod tests {
         assert_eq!(lex.next(), Some(Token::ParensOpen));
         assert_eq!(lex.next(), Some(Token::Text));
         assert_eq!(lex.next(), Some(Token::ParensClose));
+    }
+
+    #[test]
+    fn lex_pipe_test() {
+        let mut lex = Token::lexer("echo yes | apt install test");
+        assert_eq!(lex.next(), Some(Token::Text));
+        assert_eq!(lex.next(), Some(Token::Text));
+        assert_eq!(lex.next(), Some(Token::Pipe));
     }
     #[test]
     fn lex_output_test_permissions() {

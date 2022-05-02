@@ -1,5 +1,4 @@
 mod lexer;
-pub mod tomlize;
 pub mod trie;
 #[cfg(test)]
 mod tests {

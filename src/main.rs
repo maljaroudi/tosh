@@ -21,12 +21,12 @@ use nix::sys::wait::WaitStatus;
 use nix::unistd::Pid;
 use std::fs::OpenOptions;
 const PROMPT_LENGTH: usize = 2;
-
 use std::io::Seek;
 use std::io::SeekFrom;
 use std::io::Write;
 use std::io::{stdout, Cursor};
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
@@ -400,7 +400,23 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
     };
     if args.len() == 1 {
         crossterm::terminal::disable_raw_mode().map_err(Error::Term)?;
+        // Change to Error::Jc
+        let mut jc_output = Command::new("jc")
+            .arg("-r")
+            .arg(&cmd)
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .output()
+            .map_err(Error::Term)?;
+        if let Some(jc_code) = jc_output.status.code() {
+            if jc_code < 100 {
+                let json_value = serde_json::from_slice::<toml::Value>(&jc_output.stdout).unwrap();
 
+                println!("{}", json_value);
+                shell_return();
+                return Ok(());
+            }
+        }
         let mut output = Command::new(cmd);
         if let Ok(process) = output.spawn() {
             let pid_u32 = process.id();

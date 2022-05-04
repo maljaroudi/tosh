@@ -523,6 +523,7 @@ fn tab_completion(cmd: &mut Cursor<String>) -> Result<()> {
 }
 
 fn shell_return() {
+    println!("\r\n[{}]", std::env::current_dir().unwrap().display());
     print!("\r\n⡢ ");
 }
 

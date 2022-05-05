@@ -1,6 +1,6 @@
-use logos::Logos;
+pub use logos::Logos;
 #[derive(Logos, Debug, PartialEq)]
-enum Token {
+pub enum Token {
     #[token("|")]
     Pipe,
     #[token("$")]
@@ -10,7 +10,7 @@ enum Token {
     ParensOpen,
     #[token(")")]
     ParensClose,
-    #[regex("[a-zA-Z]+")]
+    #[regex("[a-zA-Z.]+")]
     Text,
     #[regex("[dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-][dlLsStT+@rwx-]")]
     Permissions,

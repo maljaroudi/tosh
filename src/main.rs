@@ -31,6 +31,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
 use toml::toml;
+use tosh::lexer::*;
 //use tosh_classifier::{classify, prime};
 type Result<T> = std::result::Result<T, error::Error>;
 
@@ -61,7 +62,7 @@ fn main() -> Result<()> {
             if let Event::Key(event) = event::read().expect("Failed to read line") {
                 match event {
                     KeyEvent {
-                        code: KeyCode::Char('q'),
+                        code: KeyCode::Char('`'),
                         modifiers: event::KeyModifiers::CONTROL,
                     } => break,
                     KeyEvent {
@@ -424,7 +425,7 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
             let pid = Pid::from_raw(pid_u32.try_into().unwrap());
             if let Ok(x) = waitpid(pid, Some(WaitPidFlag::WUNTRACED)) {
                 match x {
-                    WaitStatus::Stopped(p, nix::sys::signal::Signal::SIGTSTP) => {
+                    WaitStatus::Stopped(_p, nix::sys::signal::Signal::SIGTSTP) => {
                         fg_list.push(process);
                     }
                     _ => {}
@@ -464,13 +465,51 @@ fn process_command(input: &str, conf: &mut Conf, fg_list: &mut Vec<Child>) -> Re
                 return Ok(());
             }
         }
-
+        let mut tokenied_input = Token::lexer(input);
         let mut output = Command::new(cmd);
-        output.args(arguments);
+        let mut piped = false;
+        let mut output2: Command = Command::new("");
+        tokenied_input.next();
+        while let Some(part) = tokenied_input.next() {
+            match part {
+                Token::Text => {
+                    output.arg(tokenied_input.slice());
+                }
+                Token::Pipe => {
+                    output.stdout(Stdio::piped());
+                    piped = true;
+                    break;
+                }
+                e => println!("{e:?}"),
+            }
+        }
+        if piped {
+            if let Some(_cmd2) = tokenied_input.next() {
+                output2 = Command::new(tokenied_input.slice());
+                while let Some(part) = tokenied_input.next() {
+                    match part {
+                        Token::Text => {
+                            output2.arg(tokenied_input.slice());
+                        }
+                        _ => unimplemented!(),
+                    }
+                }
+            }
+        }
+        //output.args(arguments);
         if let Ok(process) = output.spawn() {
-            let pid = process.id();
-            let pid = Pid::from_raw(pid.try_into().unwrap());
-            waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+            if piped {
+                output2
+                    .stdin(Stdio::from(process.stdout.expect("ERR")))
+                    .spawn()
+                    .unwrap()
+                    .wait()
+                    .unwrap();
+            } else {
+                let pid = process.id();
+                let pid = Pid::from_raw(pid.try_into().unwrap());
+                waitpid(pid, Some(WaitPidFlag::WUNTRACED)).unwrap();
+            }
         } else {
             let cmd_str = format!("Command Not Found {}", args[0]);
 
@@ -555,7 +594,7 @@ fn populate_history(history: &mut Vec<String>) -> Result<()> {
     Ok(())
 }
 
-fn process_output(out: String) {
+fn process_output(_out: String) {
     todo!()
 }
 
